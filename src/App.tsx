@@ -1,0 +1,532 @@
+import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart3,
+  BookOpen,
+  Check,
+  ChevronDown,
+  CircleHelp,
+  Clock3,
+  Flame,
+  Gauge,
+  Headphones,
+  Heart,
+  Home,
+  Keyboard,
+  Languages,
+  Library,
+  ListMusic,
+  LogIn,
+  LogOut,
+  Medal,
+  Menu,
+  Pause,
+  Play,
+  RotateCcw,
+  Search,
+  Settings,
+  Sparkles,
+  Trophy,
+  UserRound,
+  Volume2,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useAuth, type LeaderboardEntry } from "./auth";
+import { lessons, lessonsByLanguage, targetLanguages } from "./data/lessons";
+import { localeLabels, translate, type TranslationKey } from "./i18n";
+import { resolveAudioUrl, speak } from "./lib/audio";
+import { answerScore, compareAnswer } from "./lib/text";
+import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
+import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
+
+type View = { page: "home" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
+
+const getInitialView = (): View => {
+  const lessonMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)\/lesson\/(.+)$/);
+  if (lessonMatch) return { page: "lesson", language: lessonMatch[1] as TargetLanguage, lessonId: lessonMatch[2] };
+  const libraryMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)$/);
+  if (libraryMatch) return { page: "library", language: libraryMatch[1] as TargetLanguage };
+  const legacyMatch = window.location.hash.match(/^#\/lesson\/(.+)$/);
+  return legacyMatch ? { page: "lesson", language: "en", lessonId: legacyMatch[1] } : { page: "home" };
+};
+
+const levelClass: Record<Level, string> = { A1: "mint", A2: "sky", B1: "amber", B2: "rose" };
+
+function App() {
+  const auth = useAuth();
+  const [view, setView] = useState<View>(getInitialView);
+  const [progress, setProgress] = useState<ProgressMap>(loadProgress);
+  const [locale, setLocale] = useState<UiLocale>(() => (localStorage.getItem("echotype-locale") as UiLocale) || "vi");
+
+  useEffect(() => {
+    const onHash = () => setView(getInitialView());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => saveProgress(progress), [progress]);
+  useEffect(() => localStorage.setItem("echotype-locale", locale), [locale]);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.title = view.page === "home" ? "EchoType — Choose your language" : "EchoType — Dictation practice";
+  }, [locale, view.page]);
+
+  useEffect(() => {
+    if (!auth.user) return;
+    const languageByLesson = Object.fromEntries(lessons.flatMap((lesson) => [[lesson.id, lesson.language]]));
+    void auth.syncProgress(loadProgress(), languageByLesson).then(setProgress).catch(() => undefined);
+  }, [auth.user?.id]);
+
+  const navigate = (next: View) => {
+    window.location.hash = next.page === "home" ? "/" : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
+    setView(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  return view.page === "home" ? (
+    <LanguageHome locale={locale} onLocale={setLocale} onChoose={(language) => navigate({ page: "library", language })} />
+  ) : view.page === "lesson" ? (
+    <PracticePage
+      lesson={lessonsByLanguage[view.language].find((lesson) => lesson.id === view.lessonId) ?? lessonsByLanguage[view.language][0]}
+      progress={progress}
+      onProgress={setProgress}
+      locale={locale}
+      onLocale={setLocale}
+      onHome={() => navigate({ page: "home" })}
+      onBack={() => navigate({ page: "library", language: view.language })}
+      onOpenLesson={(lessonId) => navigate({ page: "lesson", language: view.language, lessonId })}
+    />
+  ) : (
+    <LibraryPage language={view.language} locale={locale} onLocale={setLocale} progress={progress} onHome={() => navigate({ page: "home" })} onOpenLesson={(lessonId) => navigate({ page: "lesson", language: view.language, lessonId })} />
+  );
+}
+
+const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
+
+function LocaleSelect({ locale, onLocale, dark = false }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; dark?: boolean }) {
+  return <label className={`locale-select ${dark ? "dark" : ""}`}><Languages size={16} /><select value={locale} onChange={(event) => onLocale(event.target.value as UiLocale)} aria-label="Interface language">{(Object.keys(localeLabels) as UiLocale[]).map((item) => <option key={item} value={item}>{localeLabels[item]}</option>)}</select><ChevronDown size={14} /></label>;
+}
+
+function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; onChoose: (language: TargetLanguage) => void }) {
+  const t = getT(locale);
+  const descriptions: Record<UiLocale, Record<TargetLanguage, string>> = {
+    vi: { en: "Truyện và hội thoại bằng tiếng Anh-Mỹ và Anh-Anh", zh: "Tiếng Phổ thông với từ vựng thực tế hằng ngày", ja: "Tiếng Nhật giọng Tokyo qua những câu chuyện ngắn" },
+    en: { en: "Stories and conversations in American and British English", zh: "Standard Mandarin with practical everyday vocabulary", ja: "Natural Tokyo Japanese through short, focused stories" },
+    zh: { en: "通过美式与英式英语故事和对话学习", zh: "通过实用日常词汇学习标准普通话", ja: "通过短篇故事学习自然的东京日语" },
+    ja: { en: "アメリカ英語とイギリス英語の物語・会話", zh: "日常で使える語彙と標準中国語", ja: "短い物語で学ぶ自然な東京の日本語" },
+  };
+  return <div className="language-home">
+    <header className="landing-header"><Logo /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
+    <main className="landing-main">
+      <div className="landing-badge"><Headphones size={16} /> LISTEN · TYPE · LEARN</div>
+      <h1>{t("chooseTitle")}</h1>
+      <p>{t("chooseSubtitle")}</p>
+      <div className="language-grid">
+        {targetLanguages.map((language, index) => <button key={language.id} className="language-card" onClick={() => onChoose(language.id)} style={{ "--language-color": language.color, "--delay": `${index * 80}ms` } as CSSProperties}>
+          <span className="flag-orb">{language.flag}</span>
+          <span className="language-title"><b>{language.nativeName}</b><small>{language.name}</small></span>
+          <span className="language-description">{descriptions[locale][language.id]}</span>
+          <span className="language-stats"><span><BookOpen size={14} /> {lessonsByLanguage[language.id].length} {t("lessons")}</span><span><Trophy size={14} /> {lessonsByLanguage[language.id][0].level}–{lessonsByLanguage[language.id].at(-1)?.level}</span></span>
+          <span className="language-cta">{t("startLearning")} <ArrowRight size={17} /></span>
+        </button>)}
+      </div>
+      <div className="landing-note"><Sparkles size={15} /> {t("freeForever")} · {t("changeLanguage")}</div>
+    </main>
+    <div className="landing-shape shape-one" /><div className="landing-shape shape-two" />
+  </div>;
+}
+
+function Logo() {
+  return (
+    <div className="logo" aria-label="EchoType home">
+      <span className="logo-mark"><span /><span /><span /><span /><span /></span>
+      <span>echo<span>type</span></span>
+    </div>
+  );
+}
+
+function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesson }: { language: TargetLanguage; locale: UiLocale; onLocale: (locale: UiLocale) => void; progress: ProgressMap; onHome: () => void; onOpenLesson: (id: string) => void }) {
+  const t = getT(locale);
+  const languageLessons = lessonsByLanguage[language];
+  const languageMeta = targetLanguages.find((item) => item.id === language)!;
+  const sections = Array.from(new Set(languageLessons.map((lesson) => lesson.section)));
+  const [query, setQuery] = useState("");
+  const [level, setLevel] = useState<Level | "All">("All");
+  const [section, setSection] = useState<number | "All">("All");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const filtered = useMemo(
+    () => languageLessons.filter((lesson) => {
+      const matchesQuery = `${lesson.title} ${lesson.summary}`.toLowerCase().includes(query.toLowerCase());
+      return matchesQuery && (level === "All" || lesson.level === level) && (section === "All" || lesson.section === section);
+    }),
+    [query, level, section, languageLessons],
+  );
+
+  const completed = languageLessons.filter((lesson) => (progress[lesson.id]?.completed.length ?? 0) > 0).length;
+  const totalCorrect = languageLessons.reduce((sum, lesson) => sum + (progress[lesson.id]?.correct ?? 0), 0);
+  const totalAttempts = languageLessons.reduce((sum, lesson) => sum + (progress[lesson.id]?.attempts ?? 0), 0);
+  const featured = languageLessons.find((item) => (progress[item.id]?.completed.length ?? 0) < item.sentences.length) ?? languageLessons[0];
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Mở menu"><Menu size={21} /></button>
+        <button className="logo-button" onClick={onHome}><Logo /></button>
+        <div className="header-search">
+          <Search size={18} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("search")} aria-label={t("search")} />
+          <kbd>⌘ K</kbd>
+        </div>
+        <div className="header-actions">
+          <LocaleSelect locale={locale} onLocale={onLocale} />
+          <button className="streak-pill"><Flame size={17} fill="currentColor" /> <b>7</b></button>
+          <AccountMenu locale={locale} />
+        </div>
+      </header>
+
+      <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
+        <button className="icon-button close-nav" onClick={() => setMobileNav(false)} aria-label="Đóng menu"><X size={20} /></button>
+        <nav>
+          <p className="nav-label">{t("learning")}</p>
+          <button className="nav-item" onClick={onHome}><Home size={19} />{t("home")}</button>
+          <a className="nav-item active" href={`#/learn/${language}`}><Library size={19} />{t("library")}<span className="count">{languageLessons.length}</span></a>
+          <a className="nav-item" href="#progress"><BarChart3 size={19} />{t("progress")}</a>
+          <a className="nav-item" href="#saved"><Heart size={19} />{t("saved")}</a>
+          <LeaderboardLauncher locale={locale} nav />
+          <p className="nav-label">{languageMeta.flag} {languageMeta.nativeName}</p>
+          <button className="nav-item topic active-topic"><span className="topic-dot coral" />Short stories</button>
+          <button className="nav-item topic"><span className="topic-dot blue" />Daily conversations</button>
+          <button className="nav-item topic"><span className="topic-dot yellow" />Travel & culture</button>
+          <button className="nav-item topic"><span className="topic-dot green" />Work & business</button>
+        </nav>
+        <div className="sidebar-bottom">
+          <button className="nav-item" onClick={() => setShowSettings(true)}><Settings size={19} />{t("settings")}</button>
+          <button className="nav-item"><CircleHelp size={19} />{t("guide")}</button>
+        </div>
+      </aside>
+
+      {mobileNav && <button className="nav-backdrop" onClick={() => setMobileNav(false)} aria-label="Đóng menu" />}
+
+      <main className="library-main">
+        <section className="welcome-row">
+          <div>
+            <p className="eyebrow">{languageMeta.flag} {languageMeta.nativeName.toUpperCase()}</p>
+            <h1>{t("dailyPractice")}</h1>
+            <p>{t("dailySubtitle")}</p>
+          </div>
+          <div className="weekly-card">
+            <div className="week-ring"><span>{completed}</span><small>/ {languageLessons.length}</small></div>
+            <div><b>{t("weekProgress")}</b><span>{totalAttempts ? Math.round((totalCorrect / totalAttempts) * 100) : 0}% {t("accuracy")}</span></div>
+          </div>
+        </section>
+
+        <section className="featured-card">
+          <div className="featured-copy">
+            <div className="featured-tag"><Sparkles size={15} /> {t("suggested")}</div>
+            <span className={`level-badge ${levelClass[featured.level]}`}>{featured.level}</span>
+            <h2>{featured.title}</h2>
+            <p>{featured.summary}</p>
+            <div className="meta-row">
+              <span><ListMusic size={16} /> {featured.sentences.length} {t("sentences")}</span>
+              <span><Clock3 size={16} /> {featured.duration} {t("minutes")}</span>
+              <span><Volume2 size={16} /> {t("voice")} {featured.accent}</span>
+            </div>
+            <button className="primary-button" onClick={() => onOpenLesson(featured.id)}><Play size={17} fill="currentColor" /> {t("begin")}</button>
+          </div>
+          <div className="featured-art" aria-hidden="true">
+            <div className="sun" />
+            <div className="hill one" /><div className="hill two" />
+            <div className="person"><span className="head" /><span className="body" /><span className="leg l" /><span className="leg r" /></div>
+            <div className="sound-wave"><i /><i /><i /><i /><i /></div>
+            <span className="art-emoji">{featured.emoji}</span>
+          </div>
+        </section>
+
+        <section className="lessons-section">
+          <div className="section-heading">
+            <div><h2>{t("allStories")}</h2><span>{filtered.length} {t("lessons")}</span></div>
+            <div className="filter-row">
+              <label className="select-wrap">{t("level")}
+                <select value={level} onChange={(event) => setLevel(event.target.value as Level | "All")}>
+                  <option value="All">{t("all")}</option><option>A1</option><option>A2</option><option>B1</option><option>B2</option>
+                </select><ChevronDown size={15} />
+              </label>
+              <label className="select-wrap">{t("section")}
+                <select value={section} onChange={(event) => setSection(event.target.value === "All" ? "All" : Number(event.target.value))}>
+                  <option value="All">{t("all")}</option>{sections.map((item) => <option key={item} value={item}>{t("section")} {item}</option>)}
+                </select><ChevronDown size={15} />
+              </label>
+            </div>
+          </div>
+
+          {filtered.length ? sections.map((sectionNumber) => {
+            const items = filtered.filter((lesson) => lesson.section === sectionNumber);
+            if (!items.length) return null;
+            return (
+              <div className="lesson-group" key={sectionNumber}>
+                <div className="group-title"><span>{t("section")} {sectionNumber}</span><i /></div>
+                <div className="lesson-grid">
+                  {items.map((lesson) => (
+                    <LessonCard key={lesson.id} lesson={lesson} done={progress[lesson.id]?.completed.length ?? 0} t={t} onClick={() => onOpenLesson(lesson.id)} />
+                  ))}
+                </div>
+              </div>
+            );
+          }) : <div className="empty-state"><Search size={28} /><h3>{t("noLessons")}</h3><p>{t("retryFilter")}</p></div>}
+        </section>
+
+        <footer>© 2026 EchoType · Luyện nghe tốt hơn, từng câu một.</footer>
+      </main>
+
+      {showSettings && <SettingsModal t={t} onClose={() => setShowSettings(false)} onReset={() => { clearProgress(); location.reload(); }} />}
+    </div>
+  );
+}
+
+function LessonCard({ lesson, done, t, onClick }: { lesson: Lesson; done: number; t: ReturnType<typeof getT>; onClick: () => void }) {
+  const percent = Math.round((done / lesson.sentences.length) * 100);
+  return (
+    <button className="lesson-card" onClick={onClick}>
+      <span className="lesson-number">{String(lesson.number).padStart(2, "0")}</span>
+      <span className="lesson-emoji">{lesson.emoji}</span>
+      <span className={`level-badge ${levelClass[lesson.level]}`}>{lesson.level}</span>
+      <span className="lesson-copy"><b>{lesson.title}</b><small>{lesson.summary}</small></span>
+      <span className="lesson-meta"><span><ListMusic size={14} />{lesson.sentences.length} {t("sentences")}</span><span><Clock3 size={14} />{lesson.duration} {t("minutes")}</span></span>
+      <span className="card-progress"><i style={{ width: `${percent}%` }} /></span>
+      <span className="start-circle">{percent === 100 ? <Check size={18} /> : <ArrowRight size={18} />}</span>
+    </button>
+  );
+}
+
+function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, onBack, onOpenLesson }: {
+  lesson: Lesson;
+  progress: ProgressMap;
+  onProgress: (value: ProgressMap) => void;
+  locale: UiLocale;
+  onLocale: (locale: UiLocale) => void;
+  onHome: () => void;
+  onBack: () => void;
+  onOpenLesson: (id: string) => void;
+}) {
+  const t = getT(locale);
+  const auth = useAuth();
+  const initialIndex = Math.min(progress[lesson.id]?.completed.length ?? 0, lesson.sentences.length - 1);
+  const [index, setIndex] = useState(initialIndex);
+  const [typed, setTyped] = useState("");
+  const [checked, setChecked] = useState(false);
+  const [score, setScore] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [playing, setPlaying] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [repeat, setRepeat] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const sentenceStartedAt = useRef(Date.now());
+  const sentence = lesson.sentences[index];
+  const lessonDone = progress[lesson.id]?.completed.length ?? 0;
+  const percent = Math.round((lessonDone / lesson.sentences.length) * 100);
+
+  useEffect(() => {
+    setTyped(""); setChecked(false); setScore(0); setShowTranslation(false); setPlaying(false);
+    sentenceStartedAt.current = Date.now();
+  }, [index, lesson.id]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = target?.tagName === "TEXTAREA" || target?.tagName === "INPUT";
+      if (event.code === "Space" && !isTyping) {
+        event.preventDefault();
+        playSentence();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const playSentence = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.playbackRate = speed;
+      audio.currentTime = 0;
+      audio.play().then(() => setPlaying(true)).catch(() => {
+        speak(sentence.text, speed, lesson.accent); setPlaying(true); setTimeout(() => setPlaying(false), 1200);
+      });
+    } else {
+      speak(sentence.text, speed, lesson.accent); setPlaying(true); setTimeout(() => setPlaying(false), 1200);
+    }
+  };
+
+  const check = () => {
+    if (!typed.trim()) return;
+    const nextScore = answerScore(sentence.text, typed);
+    setScore(nextScore); setChecked(true);
+    const existing = progress[lesson.id] ?? { completed: [], attempts: 0, correct: 0, updatedAt: "" };
+    const completed = nextScore >= 80 && !existing.completed.includes(index) ? [...existing.completed, index] : existing.completed;
+    onProgress({ ...progress, [lesson.id]: { completed, attempts: existing.attempts + 1, correct: existing.correct + (nextScore >= 80 ? 1 : 0), updatedAt: new Date().toISOString() } });
+    void auth.recordActivity({
+      lessonId: lesson.id,
+      language: lesson.language,
+      sentenceIndex: index,
+      typedAnswer: typed,
+      durationSeconds: Math.max(1, Math.min(300, Math.round((Date.now() - sentenceStartedAt.current) / 1000))),
+    });
+  };
+
+  const next = () => {
+    if (index < lesson.sentences.length - 1) setIndex(index + 1);
+    else {
+      const languageLessons = lessonsByLanguage[lesson.language];
+      const lessonIndex = languageLessons.findIndex((item) => item.id === lesson.id);
+      onOpenLesson(languageLessons[(lessonIndex + 1) % languageLessons.length].id);
+    }
+  };
+
+  return (
+    <div className="practice-shell">
+      <header className="practice-header">
+        <button className="logo-button" onClick={onHome}><Logo /></button>
+        <button className="back-link" onClick={onBack}><ArrowLeft size={18} /> {t("backLibrary")}</button>
+        <div className="practice-title"><span>{lesson.emoji}</span><div><b>{lesson.number}. {lesson.title}</b><small><span className={`level-dot ${levelClass[lesson.level]}`} />{lesson.level} · Giọng {lesson.accent}</small></div></div>
+        <div className="header-progress"><span><b>{lessonDone}</b> / {lesson.sentences.length} câu</span><div><i style={{ width: `${percent}%` }} /></div></div>
+        <div className="practice-user-actions"><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div>
+      </header>
+
+      <main className="practice-main">
+        <section className="practice-content">
+          <div className="step-label"><span>{t("sentence").toUpperCase()} {index + 1} / {lesson.sentences.length}</span><i /></div>
+
+          <div className="audio-stage">
+            <audio
+              ref={audioRef}
+              src={resolveAudioUrl(sentence.audio)}
+              onEnded={() => { setPlaying(false); if (repeat) playSentence(); }}
+              onPause={() => setPlaying(false)}
+              onPlay={() => setPlaying(true)}
+              onError={(event) => { (event.currentTarget as HTMLAudioElement).removeAttribute("src"); }}
+            />
+            <button className={`play-main ${playing ? "playing" : ""}`} onClick={() => playing && audioRef.current && !audioRef.current.paused ? audioRef.current.pause() : playSentence()} aria-label="Phát câu">
+              {playing ? <Pause size={27} fill="currentColor" /> : <Play size={29} fill="currentColor" />}
+            </button>
+            <div className="fake-wave" aria-hidden="true">{Array.from({ length: 54 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 17) % 31)}px` }} />)}</div>
+            <span className="audio-time">0:00 / 0:04</span>
+          </div>
+
+          <div className="audio-tools">
+            <button className={repeat ? "active" : ""} onClick={() => setRepeat(!repeat)}><RotateCcw size={16} /> {t("repeat")}</button>
+            <button onClick={() => setSpeed(speed === 1 ? .75 : speed === .75 ? 1.25 : 1)}><Gauge size={16} /> {speed}×</button>
+            <span className="shortcut"><kbd>Space</kbd> {t("spaceListen")}</span>
+          </div>
+
+          <div className={`answer-panel ${checked ? score >= 80 ? "success" : "retry" : ""}`}>
+            <div className="answer-heading"><label htmlFor="answer">{t("typePrompt")}</label><span>{typed.length} {t("characters")}</span></div>
+            {!checked ? (
+              <textarea id="answer" lang={lesson.language} value={typed} onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) check(); }} placeholder={t("typePlaceholder")} autoFocus />
+            ) : (
+              <div className="word-result">{compareAnswer(sentence.text, typed).map((item, i) => <span key={`${item.word}-${i}`} className={item.status}>{item.word}</span>)}</div>
+            )}
+            <div className="answer-footer">
+              {!checked ? <span><Keyboard size={16} /> {t("caseHint")}</span> : <div className="score-message"><span className="score-icon">{score >= 80 ? <Check size={18} /> : <RotateCcw size={17} />}</span><div><b>{score >= 80 ? t("excellent") : t("almost")} <em>{score}%</em></b><small>{score >= 80 ? t("correctMessage") : t("retryMessage")}</small></div></div>}
+              <button className="primary-button" onClick={checked ? next : check} disabled={!typed.trim()}>{checked ? <>{t("next")} <ArrowRight size={17} /></> : <>{t("check")} <Check size={17} /></>}</button>
+            </div>
+          </div>
+
+          <div className="help-row">
+            <button onClick={() => setShowTranslation(!showTranslation)}><Languages size={17} /> {showTranslation ? sentence.translation : t("translation")}</button>
+            <button onClick={() => setShowTranscript(true)}><BookOpen size={17} /> {t("transcript")}</button>
+          </div>
+        </section>
+
+        <aside className="sentence-list">
+          <div className="queue-heading"><div><span className="overline">{t("progress").toUpperCase()}</span><b>{t("sentenceList")}</b></div><span>{percent}%</span></div>
+          <div className="queue-progress"><i style={{ width: `${percent}%` }} /></div>
+          <div className="queue-items">
+            {lesson.sentences.map((item, itemIndex) => {
+              const done = progress[lesson.id]?.completed.includes(itemIndex);
+              return <button key={item.id} className={itemIndex === index ? "current" : ""} onClick={() => setIndex(itemIndex)}><span className={done ? "done" : ""}>{done ? <Check size={14} /> : itemIndex + 1}</span><p>{itemIndex === index || done ? item.text : t("listenComplete")}</p>{itemIndex === index && <Headphones size={16} />}</button>;
+            })}
+          </div>
+          <div className="tip-card"><span>💡</span><div><b>{t("tip")}</b><p>{t("tipText")}</p></div></div>
+        </aside>
+      </main>
+
+      {showTranscript && <TranscriptModal lesson={lesson} t={t} onClose={() => setShowTranscript(false)} onPlay={(text) => speak(text, speed, lesson.accent)} />}
+    </div>
+  );
+}
+
+function AccountMenu({ locale }: { locale: UiLocale }) {
+  const t = getT(locale);
+  const auth = useAuth();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (auth.loading) return <span className="avatar avatar-loading" />;
+  if (!auth.user) return <button className="login-button" onClick={auth.login}><LogIn size={16} />{t("signIn")}</button>;
+  const initials = auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+
+  const saveName = async () => {
+    setSaving(true); setError("");
+    try { await auth.rename(name); setEditing(false); setOpen(false); }
+    catch { setError("2–40 characters, without control characters."); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="account-wrap">
+    <button className="avatar" onClick={() => setOpen(!open)} aria-label={auth.user.displayName}>{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</button>
+    {open && <div className="account-popover">
+      <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
+      <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
+      <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
+      <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
+    </div>}
+    {editing && <div className="modal-backdrop" onMouseDown={() => setEditing(false)}><section className="modal name-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setEditing(false)}><X size={20} /></button><span className="overline">{t("editName").toUpperCase()}</span><h2>{t("displayName")}</h2><input value={name} maxLength={40} autoFocus onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveName(); }} />{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button onClick={() => setEditing(false)}>{t("cancel")}</button><button className="primary-button" disabled={saving || [...name.trim()].length < 2} onClick={() => void saveName()}>{t("save")}</button></div></section></div>}
+  </div>;
+}
+
+function LeaderboardLauncher({ locale, nav = false }: { locale: UiLocale; nav?: boolean }) {
+  const t = getT(locale);
+  const [open, setOpen] = useState(false);
+  return <>{nav ? <button className="nav-item" onClick={() => setOpen(true)}><Trophy size={19} />{t("leaderboard")}</button> : <button className="leaderboard-button" onClick={() => setOpen(true)} aria-label={t("leaderboard")}><Trophy size={17} /><span>{t("leaderboard")}</span></button>}{open && <LeaderboardModal locale={locale} onClose={() => setOpen(false)} />}</>;
+}
+
+function LeaderboardModal({ locale, onClose }: { locale: UiLocale; onClose: () => void }) {
+  const t = getT(locale);
+  const auth = useAuth();
+  const [period, setPeriod] = useState<"day" | "week" | "month" | "year">("week");
+  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    void auth.leaderboard(period).then((result) => setLeaders(result.leaders)).catch(() => setLeaders([])).finally(() => setLoading(false));
+  }, [period]);
+
+  const top = leaders.filter((entry) => entry.rank <= 50);
+  const currentOutside = leaders.find((entry) => entry.user_id === auth.user?.id && entry.rank > 50);
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal leaderboard-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline"><Medal size={14} /> {t("leaderboard").toUpperCase()}</span><h2>{t("leaderboardTitle")}</h2><div className="period-tabs">{(["day", "week", "month", "year"] as const).map((item) => <button className={period === item ? "active" : ""} key={item} onClick={() => setPeriod(item)}>{t(item)}</button>)}</div>
+    <div className="leader-list">{loading ? Array.from({ length: 5 }, (_, index) => <div className="leader-skeleton" key={index} />) : top.length ? top.map((entry) => <LeaderRow key={entry.user_id} entry={entry} current={entry.user_id === auth.user?.id} t={t} />) : <div className="empty-leaders"><Trophy size={27} /><p>{t("emptyLeaderboard")}</p></div>}</div>
+    {currentOutside && <div className="current-rank"><small>{t("yourPosition")}</small><LeaderRow entry={currentOutside} current t={t} /></div>}
+  </section></div>;
+}
+
+function LeaderRow({ entry, current, t }: { entry: LeaderboardEntry; current: boolean; t: ReturnType<typeof getT> }) {
+  const initials = entry.display_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  return <div className={`leader-row ${current ? "is-current" : ""}`}><span className={`rank rank-${entry.rank}`}>{entry.rank <= 3 ? ["🥇", "🥈", "🥉"][entry.rank - 1] : entry.rank}</span><span className="leader-avatar">{entry.avatar_url ? <img src={entry.avatar_url} alt="" referrerPolicy="no-referrer" /> : initials}</span><div className="leader-name"><b>{entry.display_name}</b><small>{Math.round(entry.active_seconds / 60)} {t("activeMinutes")} · {entry.completed_sentences} {t("sentences")}</small></div><strong>{entry.points} <small>{t("points")}</small></strong></div>;
+}
+
+function TranscriptModal({ lesson, t, onClose, onPlay }: { lesson: Lesson; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal transcript-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("fullTranscript")}</span><h2>{lesson.title}</h2><p className="modal-summary">{lesson.summary}</p><div className="transcript-lines">{lesson.sentences.map((sentence, index) => <button key={sentence.id} onClick={() => onPlay(sentence.text)}><span>{index + 1}</span><div><b>{sentence.text}</b><small>{sentence.translation}</small></div><Play size={15} /></button>)}</div></section></div>;
+}
+
+function SettingsModal({ t, onClose, onReset }: { t: ReturnType<typeof getT>; onClose: () => void; onReset: () => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal settings-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("settings").toUpperCase()}</span><h2>{t("learningExperience")}</h2><div className="setting-row"><div><b>{t("autoPlay")}</b><small>{t("autoPlayHint")}</small></div><label className="switch"><input type="checkbox" /><i /></label></div><div className="setting-row"><div><b>{t("showTranslation")}</b><small>{t("showTranslationHint")}</small></div><label className="switch"><input type="checkbox" defaultChecked /><i /></label></div><button className="danger-button" onClick={onReset}>{t("reset")}</button></section></div>;
+}
+
+export default App;
