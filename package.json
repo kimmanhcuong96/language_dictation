@@ -3,13 +3,14 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && tsc -p tsconfig.worker.json && vite build",
     "cf:types": "wrangler types",
     "cf:dev": "pnpm build && wrangler dev",
     "cf:deploy:dry": "pnpm build && wrangler deploy --dry-run",
-    "db:migrate:local": "wrangler d1 migrations apply echotype-db --local",
+    "db:migrate": "node scripts/migrate-neon.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -19,7 +20,8 @@
     "typescript": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "lucide-react": "latest"
+    "lucide-react": "latest",
+    "@neondatabase/serverless": "latest"
   },
   "devDependencies": {
     "@types/react": "latest",
@@ -28,6 +30,8 @@
     "@testing-library/react": "latest",
     "jsdom": "latest",
     "vitest": "latest",
-    "wrangler": "latest"
+    "wrangler": "latest",
+    "@types/node": "latest",
+    "postgres": "latest"
   }
 }
