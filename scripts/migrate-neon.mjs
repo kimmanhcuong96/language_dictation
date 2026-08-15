@@ -16,7 +16,7 @@ try {
     const contents = await readFile(`db/migrations/${file}`, "utf8");
     await sql.begin(async (tx) => {
       await tx.unsafe(contents);
-      await tx`INSERT INTO schema_migrations(version) VALUES(${version})`;
+      await tx`INSERT INTO schema_migrations(version) VALUES(${version}) ON CONFLICT DO NOTHING`;
     });
     console.log(`Applied ${file}`);
   }

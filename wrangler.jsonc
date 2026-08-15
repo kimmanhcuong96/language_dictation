@@ -12,8 +12,7 @@
   },
   "vars": {
     "GOOGLE_CLIENT_ID": "set-with-dashboard-or-environment",
-    "APP_ORIGIN": "http://localhost:8787",
-    "DATABASE_URL": "set-with-secret-or-environment"
+    "APP_ORIGIN": "http://localhost:8787"
   },
   "observability": {
     "enabled": true,

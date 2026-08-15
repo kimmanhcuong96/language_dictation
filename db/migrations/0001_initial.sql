@@ -1,3 +1,8 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   google_subject TEXT NOT NULL UNIQUE,
@@ -52,3 +57,5 @@ CREATE TABLE IF NOT EXISTS lesson_progress (
   PRIMARY KEY (user_id, lesson_id, language, sentence_index)
 );
 CREATE INDEX IF NOT EXISTS lesson_progress_user_idx ON lesson_progress(user_id, updated_at DESC);
+
+INSERT INTO schema_migrations(version) VALUES ('0001_initial') ON CONFLICT DO NOTHING;
