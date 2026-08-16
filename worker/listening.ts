@@ -10,7 +10,12 @@ const MAX_JSON_BYTES = 128 * 1024;
 class RequestBodyError extends Error { constructor(message: string, readonly status: number) { super(message); } }
 const publicHeaders = { "Cache-Control": "public, max-age=60, stale-while-revalidate=300", "Content-Type": "application/json; charset=utf-8" };
 const json = (body: unknown, status = 200, cache = false) => Response.json(body, { status, headers: cache ? publicHeaders : { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" } });
-const sqlFor = (env: Env) => neon(env.DATABASE_URL);
+type NeonSql = ReturnType<typeof neon>;
+type TransactionQuery = ReturnType<NeonSql>;
+type TransactionSql = NeonSql & { transaction(queries: TransactionQuery[]): Promise<unknown[]> };
+// @neondatabase/serverless 1.1.0 omits its declarations from package exports,
+// so TypeScript infers only the callback overload although runtime also accepts query arrays.
+const sqlFor = (env: Env) => neon(env.DATABASE_URL) as TransactionSql;
 const validId = (value: string | null, max = 100) => value && new RegExp(`^[\\w-]{1,${max}}$`, "u").test(value) ? value : null;
 const isAdmin = (env: Env, session: ListeningSession | null) => !!session && env.ADMIN_EMAILS.split(",").map((item) => item.trim().toLocaleLowerCase()).filter(Boolean).includes(session.email.toLocaleLowerCase());
 
@@ -85,11 +90,41 @@ async function saveProgress(request: Request, env: Env, session: ListeningSessio
   const firstTryCorrect = typeof body.firstTryCorrect === "boolean" ? body.firstTryCorrect : null;
   if (!lessonId || !sentenceId || !position || !attemptCount || firstTryCorrect === null) return json({ error: "invalid_progress" }, 422);
   const sql = sqlFor(env), validRows = await sql`SELECT 1 FROM listening_sentences WHERE id=${sentenceId} AND lesson_id=${lessonId} AND position=${position}`; if (!validRows.length) return json({ error: "invalid_progress" }, 422);
-  await sql.transaction(async tx => {
-    await tx`INSERT INTO listening_sentence_progress(user_id,sentence_id,attempt_count,is_completed,first_try_correct,completed_at) VALUES(${session.id},${sentenceId},${attemptCount},true,${firstTryCorrect},now()) ON CONFLICT(user_id,sentence_id) DO UPDATE SET attempt_count=GREATEST(listening_sentence_progress.attempt_count,EXCLUDED.attempt_count),is_completed=true,first_try_correct=COALESCE(listening_sentence_progress.first_try_correct,EXCLUDED.first_try_correct),updated_at=now(),completed_at=COALESCE(listening_sentence_progress.completed_at,now())`;
-    const counts = await tx`SELECT COUNT(*)::int AS completed_count,(SELECT sentence_count FROM listening_lessons WHERE id=${lessonId})::int AS total FROM listening_sentence_progress sp JOIN listening_sentences s ON s.id=sp.sentence_id WHERE sp.user_id=${session.id} AND s.lesson_id=${lessonId} AND sp.is_completed=true`; const completed = Number(counts[0].completed_count), total = Number(counts[0].total);
-    await tx`INSERT INTO listening_lesson_progress(user_id,lesson_id,current_sentence_position,completed_sentence_count,is_completed,completed_at) VALUES(${session.id},${lessonId},${Math.min(total,position+1)},${completed},${completed>=total},${completed>=total?new Date():null}) ON CONFLICT(user_id,lesson_id) DO UPDATE SET current_sentence_position=GREATEST(listening_lesson_progress.current_sentence_position,EXCLUDED.current_sentence_position),completed_sentence_count=EXCLUDED.completed_sentence_count,is_completed=EXCLUDED.is_completed,updated_at=now(),completed_at=COALESCE(listening_lesson_progress.completed_at,EXCLUDED.completed_at)`;
-  });
+  await sql`
+    WITH saved_sentence AS (
+      INSERT INTO listening_sentence_progress(user_id,sentence_id,attempt_count,is_completed,first_try_correct,completed_at)
+      VALUES(${session.id},${sentenceId},${attemptCount},true,${firstTryCorrect},now())
+      ON CONFLICT(user_id,sentence_id) DO UPDATE SET
+        attempt_count=GREATEST(listening_sentence_progress.attempt_count,EXCLUDED.attempt_count),
+        is_completed=true,
+        first_try_correct=COALESCE(listening_sentence_progress.first_try_correct,EXCLUDED.first_try_correct),
+        updated_at=now(),
+        completed_at=COALESCE(listening_sentence_progress.completed_at,now())
+      RETURNING sentence_id
+    ), counts AS (
+      SELECT COUNT(*)::int AS completed_count,
+        (SELECT sentence_count::int FROM listening_lessons WHERE id=${lessonId}) AS total
+      FROM (
+        SELECT sp.sentence_id
+        FROM listening_sentence_progress sp
+        JOIN listening_sentences s ON s.id=sp.sentence_id
+        WHERE sp.user_id=${session.id} AND s.lesson_id=${lessonId} AND sp.is_completed=true
+        UNION
+        SELECT sentence_id FROM saved_sentence
+      ) completed_sentences
+    ), saved_lesson AS (
+      INSERT INTO listening_lesson_progress(user_id,lesson_id,current_sentence_position,completed_sentence_count,is_completed,completed_at)
+      SELECT ${session.id},${lessonId},LEAST(counts.total,${position + 1}),counts.completed_count,counts.completed_count>=counts.total,
+        CASE WHEN counts.completed_count>=counts.total THEN now() ELSE NULL END
+      FROM counts CROSS JOIN saved_sentence
+      ON CONFLICT(user_id,lesson_id) DO UPDATE SET
+        current_sentence_position=GREATEST(listening_lesson_progress.current_sentence_position,EXCLUDED.current_sentence_position),
+        completed_sentence_count=EXCLUDED.completed_sentence_count,
+        is_completed=EXCLUDED.is_completed,
+        updated_at=now(),
+        completed_at=COALESCE(listening_lesson_progress.completed_at,EXCLUDED.completed_at)
+      RETURNING lesson_id
+    ) SELECT lesson_id FROM saved_lesson`;
   return json({ ok: true });
 }
 
@@ -100,7 +135,10 @@ async function getAdminBootstrap(env: Env) {
 
 async function importLesson(request: Request, env: Env, session: ListeningSession) {
   const length = Number(request.headers.get("content-length") ?? 0); if (!Number.isFinite(length) || length <= 0) return json({ error: "content_length_required" }, 411); if (length > MAX_AUDIO_BYTES + 256 * 1024) return json({ error: "upload_too_large" }, 413);
-  const form = await request.formData(), audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs");
+  let form: FormData;
+  try { form = await request.formData(); }
+  catch { return json({ error: "invalid_multipart_form" }, 400); }
+  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs");
   const durationMs = typeof durationRaw === "string" ? Number(durationRaw) : NaN;
   if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
   if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || typeof level !== "string" || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
@@ -108,31 +146,28 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   const sql = sqlFor(env), sectionRows = await sql`SELECT s.id FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.code='en'`; if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
   const duplicateRows = await sql`SELECT 1 FROM listening_lessons WHERE section_id=${sectionId} AND slug=${slug} LIMIT 1`; if (duplicateRows.length) return json({ error: "lesson_slug_exists" }, 409);
   const lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/en/lessons/${lessonId}/audio.${extension}`;
-  await env.LISTENING_AUDIO.put(audioKey, audio, { httpMetadata: { contentType: audio.type, cacheControl: "public, max-age=86400" } });
+  let sentences: AlignedSentence[];
+  try { sentences = await alignLessonImport(env, audio, transcript, durationMs); }
+  catch (error) {
+    console.error(JSON.stringify({ event: "listening_import_alignment_failed", jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
+    return alignmentErrorResponse(error);
+  }
   try {
-    await sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`;
-    const sentences = await alignLessonImport(env, audio, transcript, durationMs);
-    await sql.transaction(async tx => {
-      await tx`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:"workers-ai-whisper"})}::jsonb,999,false,${jobId})`;
-      for (const sentence of sentences) await tx`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer("en").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`;
-      await tx`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='READY_FOR_REVIEW',updated_at=now() WHERE id=${jobId}`;
-    });
+    await env.LISTENING_AUDIO.put(audioKey, audio, { httpMetadata: { contentType: audio.type, cacheControl: "public, max-age=86400" } });
+    const importQueries: TransactionQuery[] = [
+      sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`,
+      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:"workers-ai-whisper"})}::jsonb,999,false,${jobId})`,
+      ...sentences.map(sentence => sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer("en").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
+      sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='READY_FOR_REVIEW',updated_at=now() WHERE id=${jobId}`,
+    ];
+    await sql.transaction(importQueries);
     const reviewRows = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
     return json({ jobId, lessonId, status: "READY_FOR_REVIEW", sentences: reviewRows });
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "alignment_failed";
-    try {
-      await sql.transaction(async tx => {
-        await tx`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`;
-        await tx`DELETE FROM listening_lessons WHERE id=${lessonId}`;
-        await tx`DELETE FROM listening_import_jobs WHERE id=${jobId}`;
-      });
-    } catch (cleanupError) {
-      console.error(JSON.stringify({ event: "listening_import_database_cleanup_failed", lessonId, jobId, message: cleanupError instanceof Error ? cleanupError.message : "unknown" }));
-    }
-    try { await env.LISTENING_AUDIO.delete(audioKey); }
-    catch (cleanupError) { console.error(JSON.stringify({ event: "listening_import_audio_cleanup_failed", audioKey, message: cleanupError instanceof Error ? cleanupError.message : "unknown" })); }
-    return json({ error: "alignment_failed", details: message }, 422);
+    console.error(JSON.stringify({ event: "listening_import_persistence_failed", lessonId, jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
+    const cleanupComplete = await cleanupFailedImport(env, sql, { lessonId, jobId, audioKey });
+    if (!cleanupComplete) return json({ error: "import_cleanup_failed", requestId: jobId }, 500);
+    return postgresErrorCode(error) === "23505" ? json({ error: "lesson_slug_exists" }, 409) : json({ error: "import_failed" }, 500);
   }
 }
 
@@ -148,8 +183,59 @@ async function reviewLesson(request: Request, env: Env, url: URL) {
   const existingRows=await sql`SELECT id FROM listening_sentences WHERE lesson_id=${lessonId}`;const existingIds=new Set(existingRows.map(row=>String(row.id)));if(existingIds.size!==sentences.length||sentences.some(sentence=>!existingIds.has(sentence.id)))return json({error:"sentence_set_mismatch"},422);
   const errors = validateAlignedSentences(sentences, Number(lessonRows[0].duration_ms)); if (errors.length) return json({ error: "validation_failed", details: errors }, 422);
   if (body.publish && !(await env.LISTENING_AUDIO.head(String(lessonRows[0].audio_key)))) return json({ error: "audio_missing" }, 422);
-  await sql.transaction(async tx => { for (const sentence of sentences) await tx`UPDATE listening_sentences SET position=${sentence.position},transcript=${sentence.text},normalized_transcript=${getNormalizer("en").normalize(sentence.text)},start_ms=${sentence.startMs},end_ms=${sentence.endMs},updated_at=now() WHERE id=${sentence.id} AND lesson_id=${lessonId}`; await tx`UPDATE listening_lessons SET sentence_count=${sentences.length},is_published=${body.publish},updated_at=now() WHERE id=${lessonId}`; if (body.publish) await tx`UPDATE listening_import_jobs SET status='PUBLISHED',updated_at=now() WHERE id=${lessonRows[0].import_job_id}`; });
+  const reviewQueries: TransactionQuery[] = sentences.map(sentence => sql`UPDATE listening_sentences SET position=${sentence.position},transcript=${sentence.text},normalized_transcript=${getNormalizer("en").normalize(sentence.text)},start_ms=${sentence.startMs},end_ms=${sentence.endMs},updated_at=now() WHERE id=${sentence.id} AND lesson_id=${lessonId}`);
+  reviewQueries.push(sql`UPDATE listening_lessons SET sentence_count=${sentences.length},is_published=${body.publish},updated_at=now() WHERE id=${lessonId}`);
+  if (body.publish) reviewQueries.push(sql`UPDATE listening_import_jobs SET status='PUBLISHED',updated_at=now() WHERE id=${lessonRows[0].import_job_id}`);
+  await sql.transaction(reviewQueries);
   return json({ ok: true, published: body.publish });
+}
+
+async function cleanupFailedImport(env: Env, sql: ReturnType<typeof sqlFor>, resources: { lessonId: string; jobId: string; audioKey: string }): Promise<boolean> {
+  const { lessonId, jobId, audioKey } = resources;
+  try {
+    const cleanupQueries: TransactionQuery[] = [
+      sql`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`,
+      sql`DELETE FROM listening_lessons WHERE id=${lessonId}`,
+      sql`DELETE FROM listening_import_jobs WHERE id=${jobId}`,
+    ];
+    await sql.transaction(cleanupQueries);
+  } catch (error) {
+    console.error(JSON.stringify({ event: "listening_import_database_cleanup_failed", lessonId, jobId, message: error instanceof Error ? error.message : "unknown" }));
+    for (const [resource, query] of [
+      ["sentences", sql`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`],
+      ["lesson", sql`DELETE FROM listening_lessons WHERE id=${lessonId}`],
+      ["job", sql`DELETE FROM listening_import_jobs WHERE id=${jobId}`],
+    ] as const) {
+      try { await query; }
+      catch (fallbackError) { console.error(JSON.stringify({ event: "listening_import_database_fallback_cleanup_failed", resource, lessonId, jobId, message: fallbackError instanceof Error ? fallbackError.message : "unknown" })); }
+    }
+  }
+
+  try { await env.LISTENING_AUDIO.delete(audioKey); }
+  catch (error) { console.error(JSON.stringify({ event: "listening_import_audio_cleanup_failed", audioKey, message: error instanceof Error ? error.message : "unknown" })); }
+
+  try {
+    const rows = await sql`SELECT EXISTS(SELECT 1 FROM listening_sentences WHERE lesson_id=${lessonId}) OR EXISTS(SELECT 1 FROM listening_lessons WHERE id=${lessonId}) OR EXISTS(SELECT 1 FROM listening_import_jobs WHERE id=${jobId}) AS has_database_resources`;
+    const audioExists = await env.LISTENING_AUDIO.head(audioKey);
+    const complete = rows[0]?.has_database_resources !== true && audioExists === null;
+    if (!complete) console.error(JSON.stringify({ event: "listening_import_cleanup_incomplete", lessonId, jobId, audioKey, databaseResourcesRemain: rows[0]?.has_database_resources === true, audioRemains: audioExists !== null }));
+    return complete;
+  } catch (error) {
+    console.error(JSON.stringify({ event: "listening_import_cleanup_verification_failed", lessonId, jobId, audioKey, message: error instanceof Error ? error.message : "unknown" }));
+    return false;
+  }
+}
+
+function postgresErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  return typeof error.code === "string" ? error.code : null;
+}
+
+function alignmentErrorResponse(error: unknown): Response {
+  const code = error instanceof Error ? error.message : "alignment_failed";
+  if (code === "workers_ai_not_configured" || code === "workers_ai_model_invalid") return json({ error: code }, 503);
+  if (code.startsWith("workers_ai_")) return json({ error: "workers_ai_failed" }, 502);
+  return json({ error: "alignment_failed" }, 422);
 }
 
 async function boundedJson<T>(request: Request): Promise<T> { if(!request.body)throw new RequestBodyError("missing_body",400);const reader=request.body.getReader(),chunks:Uint8Array[]=[];let size=0;while(true){const{value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>MAX_JSON_BYTES){await reader.cancel();throw new RequestBodyError("body_too_large",413);}chunks.push(value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return JSON.parse(new TextDecoder().decode(bytes)) as T; }

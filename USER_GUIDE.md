@@ -108,7 +108,7 @@ Không thêm số thứ tự đầu dòng. Transcript tối đa 50.000 ký tự 
 5. Hệ thống tự tạo slug từ Title theo dạng chữ thường, bỏ ký tự đặc biệt và nối từ bằng dấu gạch ngang. Ví dụ `First Snowfall` thành `first-snowfall`.
 6. Bấm **Process**.
 
-Hệ thống sẽ upload audio vào R2, gọi Workers AI lấy cue/VTT, căn cue với transcript, rồi tạo lesson draft chưa public. Nếu alignment, validation hoặc ghi database thất bại, hệ thống rollback và xóa lesson/sentence/import-job record cùng audio object R2; bạn có thể sửa dữ liệu và import lại cùng Title.
+Hệ thống sẽ gọi Workers AI lấy cue/VTT và căn cue với transcript trước. Chỉ khi alignment thành công, hệ thống mới upload audio vào R2 rồi tạo import job, lesson và sentence trong cùng một transaction để tạo lesson draft chưa public. Alignment thất bại sẽ không tạo dữ liệu DB hoặc object R2. Nếu upload, ghi database hoặc truy vấn kết quả cuối bị lỗi, hệ thống sẽ xóa lesson/sentence/import-job cùng audio R2 và kiểm tra lại cleanup; bạn có thể sửa dữ liệu và import lại cùng Title.
 
 ## 5. Review và publish
 

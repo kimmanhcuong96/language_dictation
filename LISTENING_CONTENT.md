@@ -13,8 +13,8 @@ The listening library stores metadata and sentence timestamps in Neon and keeps 
 
 1. Sign in with an email listed in `ADMIN_EMAILS` and open `#/admin/listening` from the account menu.
 2. Select the English section, enter lesson metadata, choose an MP3/WAV/M4A/OGG/WebM audio file, and paste the canonical transcript with one sentence per line.
-3. Choose **Process**. The Worker uploads the original file once, uses Workers AI transcription only to align timestamps, and creates an unpublished draft. The supplied transcript remains unchanged and authoritative.
+3. Choose **Process**. The Worker first uses Workers AI transcription only to align timestamps. After alignment succeeds, it uploads the original file and creates the import job, lesson, and sentences atomically as an unpublished draft. The supplied transcript remains unchanged and authoritative.
 4. Play each generated segment and correct its text or `start_ms`/`end_ms` values. Timestamps must be ordered, non-overlapping, positive, and within the lesson duration.
 5. Choose **Publish**. Only published lessons appear in public APIs and the English library.
 
-Imports are limited to 20 MB, 1 hour, 1,000 sentences, and 50,000 transcript characters. If alignment, validation, or database persistence fails, the Worker removes the lesson/sentence/import-job records and deletes the uploaded R2 object so the generated slug can be retried cleanly.
+Imports are limited to 20 MB, 1 hour, 1,000 sentences, and 50,000 transcript characters. Alignment failures create no database or R2 resources. If upload, database persistence, or the final response query fails, the Worker removes the lesson/sentence/import-job records, deletes the R2 object, and verifies that cleanup completed so the generated slug can be retried cleanly.
