@@ -11,8 +11,8 @@
     "run_worker_first": ["/api/*", "/auth/*"]
   },
   "vars": {
-    "GOOGLE_CLIENT_ID": "set-with-dashboard-or-environment",
-    "APP_ORIGIN": "http://localhost:8787"
+    "GOOGLE_CLIENT_ID": "1059777304131-gour3h7dbrfe648mia9qvnj8peqep9qa.apps.googleusercontent.com",
+    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev"
   },
   "observability": {
     "enabled": true,
