@@ -45,9 +45,14 @@ Project đã nối bucket trong `wrangler.jsonc`:
 ```text
 CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
 CLOUDFLARE_AI_TOKEN=your-workers-ai-api-token
+CLOUDFLARE_AI_MODEL=@cf/openai/whisper
 ```
 
 Token cần quyền Workers AI Read/Write theo Cloudflare. Không đưa token vào frontend, `wrangler.jsonc` hoặc Git. Workers AI chỉ dùng để gợi ý timestamp; transcript người quản lý nhập luôn là nội dung chuẩn.
+
+`CLOUDFLARE_AI_MODEL` là bắt buộc; hệ thống không tự chọn model mặc định. Giá trị phải là model Workers AI dạng `@cf/{vendor}/{model}` và model cần trả về VTT để căn timestamp.
+
+Ba biến `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN` và `CLOUDFLARE_AI_MODEL` không được khai báo trong `wrangler.jsonc`. Project đã bật `keep_vars: true`, vì vậy các giá trị bạn đặt trên Cloudflare Dashboard sẽ được giữ nguyên khi deploy code mới.
 
 Chạy migration trong database mục tiêu:
 

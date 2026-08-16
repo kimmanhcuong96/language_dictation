@@ -7,8 +7,11 @@ import { alignTranscriptToVtt, validateAlignedSentences, type AlignedSentence } 
 export async function alignLessonImport(env: Env, audio: Blob, transcript: string, durationMs: number): Promise<AlignedSentence[]> {
   const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const token = env.CLOUDFLARE_AI_TOKEN?.trim();
-  if (!accountId || !token) throw new Error("workers_ai_not_configured");
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/@cf/openai/whisper`, {
+  const model = env.CLOUDFLARE_AI_MODEL?.trim();
+  if (!accountId || !token || !model) throw new Error("workers_ai_not_configured");
+  if (!/^@cf\/[a-z0-9._-]+\/[a-z0-9._-]+$/u.test(model)) throw new Error("workers_ai_model_invalid");
+  const modelPath = model.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${modelPath}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

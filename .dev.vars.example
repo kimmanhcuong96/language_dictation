@@ -6,3 +6,4 @@ APP_ORIGIN=http://localhost:8787
 ADMIN_EMAILS=admin@example.com
 CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
 CLOUDFLARE_AI_TOKEN=your-workers-ai-api-token
+CLOUDFLARE_AI_MODEL=@cf/openai/whisper
