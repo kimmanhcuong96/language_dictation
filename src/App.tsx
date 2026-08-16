@@ -199,11 +199,11 @@ function Logo() {
 }
 
 function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { language: TargetLanguage; locale: UiLocale; onLocale: (locale: UiLocale) => void; onHome: () => void; onDictation: () => void }) {
-  const labels: Record<TargetLanguage, string> = { en: "English Dictation", zh: "Chinese Dictation", ja: "Japanese Dictation" };
+  const labels: Record<TargetLanguage, TranslationKey> = { en: "englishDictation", zh: "chineseDictation", ja: "japaneseDictation" };
   return <header className="landing-header learning-header">
     <div className="learning-brand">
       <button className="logo-home" onClick={onHome} aria-label="Me2Listen home"><Logo /></button>
-      <button className="dictation-button" onClick={onDictation}><Headphones size={17} /><span>{labels[language]}</span></button>
+      <button className="dictation-button" onClick={onDictation}><Headphones size={17} /><span>{translate(locale, labels[language])}</span></button>
     </div>
     <div className="landing-actions">
       <LeaderboardLauncher locale={locale} />
