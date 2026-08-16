@@ -63,6 +63,8 @@ ADMIN_EMAILS=manager@example.com,editor@example.com
 
 Email đăng nhập Google phải khớp danh sách này. Không commit `DATABASE_URL`, OAuth secret hoặc token vào Git.
 
+Project đã bật `keep_vars: true` và không khai báo `ADMIN_EMAILS` trong `wrangler.jsonc`, nên giá trị `ADMIN_EMAILS` trên Cloudflare Dashboard sẽ được giữ lại khi deploy. Nếu lần deploy trước đã ghi đè thành rỗng, hãy nhập lại giá trị một lần trong Dashboard trước khi deploy phiên bản mới.
+
 Sau khi đổi binding/config:
 
 ```powershell

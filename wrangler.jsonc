@@ -4,6 +4,7 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-16",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -12,8 +13,7 @@
   },
   "vars": {
     "GOOGLE_CLIENT_ID": "1059777304131-gour3h7dbrfe648mia9qvnj8peqep9qa.apps.googleusercontent.com",
-    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev",
-    "ADMIN_EMAILS": ""
+    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev"
   },
   "r2_buckets": [
     { "binding": "LISTENING_AUDIO", "bucket_name": "me2listen-audio" }
