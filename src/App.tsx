@@ -97,11 +97,11 @@ function App() {
   return view.page === "home" ? (
     <LanguageHome locale={locale} onLocale={setLocale} onChoose={(language) => navigate(language==="en"?{page:"english"}:{page:"coming",language})} />
   ) : view.page === "english" ? (
-    <EnglishLearningApp locale={locale} onHome={() => navigate({page:"home"})}/>
+    <EnglishLearningApp locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
   ) : view.page === "admin" ? (
     <AdminListeningPage onHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
-    <ComingSoonPage language={view.language} locale={locale} onHome={() => navigate({page:"home"})}/>
+    <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
     <PracticePage
       lesson={lessonsByLanguage[view.language].find((lesson) => lesson.id === view.lessonId) ?? lessonsByLanguage[view.language][0]}
@@ -118,7 +118,7 @@ function App() {
   );
 }
 
-function ComingSoonPage({language,locale,onHome}:{language:"ja"|"zh";locale:UiLocale;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="content-shell"><header><button className="back-link" onClick={onHome}><ArrowLeft size={18}/>{getT(locale)("home")}</button><h1>{meta.nativeName}</h1></header><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2></div></main></div>;}
+function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>{window.location.hash=`/learn/${language}`;}}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -196,6 +196,21 @@ function Logo() {
       <span>me2<span>listen</span></span>
     </div>
   );
+}
+
+function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { language: TargetLanguage; locale: UiLocale; onLocale: (locale: UiLocale) => void; onHome: () => void; onDictation: () => void }) {
+  const labels: Record<TargetLanguage, string> = { en: "English Dictation", zh: "Chinese Dictation", ja: "Japanese Dictation" };
+  return <header className="landing-header learning-header">
+    <div className="learning-brand">
+      <button className="logo-home" onClick={onHome} aria-label="Me2Listen home"><Logo /></button>
+      <button className="dictation-button" onClick={onDictation}><Headphones size={17} /><span>{labels[language]}</span></button>
+    </div>
+    <div className="landing-actions">
+      <LeaderboardLauncher locale={locale} />
+      <LocaleSelect locale={locale} onLocale={onLocale} />
+      <AccountMenu locale={locale} />
+    </div>
+  </header>;
 }
 
 function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesson }: { language: TargetLanguage; locale: UiLocale; onLocale: (locale: UiLocale) => void; progress: ProgressMap; onHome: () => void; onOpenLesson: (id: string) => void }) {

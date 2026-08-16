@@ -18,12 +18,10 @@ const navigate=(path:string)=>{window.location.hash=path;window.scrollTo({top:0,
 
 function useHash(){const [hash,setHash]=useState(window.location.hash);useEffect(()=>{const update=()=>setHash(window.location.hash);window.addEventListener("hashchange",update);return()=>window.removeEventListener("hashchange",update);},[]);return hash;}
 
-export function EnglishLearningApp({locale,onHome}:{locale:UiLocale;onHome:()=>void}){
+export function EnglishLearningApp({locale,onHome,header}:{locale:UiLocale;onHome:()=>void;header:React.ReactNode}){
   const hash=useHash(),lesson=hash.match(/^#\/learn\/en\/lesson\/([\w-]+)$/u),section=hash.match(/^#\/learn\/en\/([\w-]+)\/([\w-]+)$/u),category=hash.match(/^#\/learn\/en\/([\w-]+)$/u);
-  if(lesson)return <DictationLesson lessonSlug={lesson[1]} locale={locale} onHome={onHome}/>;
-  if(section)return <LessonList categorySlug={section[1]} sectionId={section[2]} locale={locale} onHome={onHome}/>;
-  if(category)return <SectionList categorySlug={category[1]} locale={locale} onHome={onHome}/>;
-  return <CategoryList locale={locale} onHome={onHome}/>;
+  const content=lesson?<DictationLesson lessonSlug={lesson[1]} locale={locale} onHome={onHome}/>:section?<LessonList categorySlug={section[1]} sectionId={section[2]} locale={locale} onHome={onHome}/>:category?<SectionList categorySlug={category[1]} locale={locale} onHome={onHome}/>:<CategoryList locale={locale} onHome={onHome}/>;
+  return <><div className="learning-page-header">{header}</div>{content}</>;
 }
 
 function Shell({children,onHome,title,locale="en"}:{children:React.ReactNode;onHome:()=>void;title:string;locale?:UiLocale}){return <div className="content-shell"><header><button onClick={onHome} className="back-link"><ArrowLeft size={18}/>{translate(locale,"home")}</button><h1>{title}</h1></header><main>{children}</main></div>;}
