@@ -36,13 +36,20 @@ import { useAuth, type LeaderboardEntry } from "./auth";
 import { lessons, lessonsByLanguage, targetLanguages } from "./data/lessons";
 import { localeLabels, translate, type TranslationKey } from "./i18n";
 import { resolveAudioUrl, speak } from "./lib/audio";
-import { answerScore, compareAnswer } from "./lib/text";
+import { answerScore } from "./lib/text";
+import { evaluateAnswer } from "./lib/dictation";
+import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
+import { AdminListeningPage, EnglishLearningApp } from "./listening";
 
-type View = { page: "home" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
+type View = { page: "home" } | { page: "english" } | { page: "admin" } | { page: "coming"; language: "ja"|"zh" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
 
 const getInitialView = (): View => {
+  if (window.location.hash === "#/admin/listening") return { page: "admin" };
+  if (/^#\/learn\/en(?:\/.*)?$/u.test(window.location.hash)) return { page: "english" };
+  const comingMatch = window.location.hash.match(/^#\/learn\/(ja|zh)(?:\/.*)?$/u);
+  if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja"|"zh" };
   const lessonMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)\/lesson\/(.+)$/);
   if (lessonMatch) return { page: "lesson", language: lessonMatch[1] as TargetLanguage, lessonId: lessonMatch[2] };
   const libraryMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)$/);
@@ -82,13 +89,19 @@ function App() {
   }, [auth.user?.id]);
 
   const navigate = (next: View) => {
-    window.location.hash = next.page === "home" ? "/" : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
+    window.location.hash = next.page === "home" ? "/" : next.page === "english" ? "/learn/en" : next.page === "admin" ? "/admin/listening" : next.page === "coming" ? `/learn/${next.language}` : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
     setView(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return view.page === "home" ? (
-    <LanguageHome locale={locale} onLocale={setLocale} onChoose={(language) => navigate({ page: "library", language })} />
+    <LanguageHome locale={locale} onLocale={setLocale} onChoose={(language) => navigate(language==="en"?{page:"english"}:{page:"coming",language})} />
+  ) : view.page === "english" ? (
+    <EnglishLearningApp locale={locale} onHome={() => navigate({page:"home"})}/>
+  ) : view.page === "admin" ? (
+    <AdminListeningPage onHome={() => navigate({page:"home"})}/>
+  ) : view.page === "coming" ? (
+    <ComingSoonPage language={view.language} locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
     <PracticePage
       lesson={lessonsByLanguage[view.language].find((lesson) => lesson.id === view.lessonId) ?? lessonsByLanguage[view.language][0]}
@@ -104,6 +117,8 @@ function App() {
     <LibraryPage language={view.language} locale={locale} onLocale={setLocale} progress={progress} onHome={() => navigate({ page: "home" })} onOpenLesson={(lessonId) => navigate({ page: "lesson", language: view.language, lessonId })} />
   );
 }
+
+function ComingSoonPage({language,locale,onHome}:{language:"ja"|"zh";locale:UiLocale;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="content-shell"><header><button className="back-link" onClick={onHome}><ArrowLeft size={18}/>{getT(locale)("home")}</button><h1>{meta.nativeName}</h1></header><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2></div></main></div>;}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -145,6 +160,8 @@ function LocaleSelect({ locale, onLocale, dark = false }: { locale: UiLocale; on
 
 function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; onChoose: (language: TargetLanguage) => void }) {
   const t = getT(locale);
+  const [englishCategoryCount,setEnglishCategoryCount]=useState<number|null>(null);
+  useEffect(()=>{void fetch("/api/listening/categories?language=en").then(response=>response.ok?response.json():Promise.reject()).then((body:{categories:unknown[]})=>setEnglishCategoryCount(body.categories.length)).catch(()=>setEnglishCategoryCount(0));},[]);
   const descriptions: Record<UiLocale, Record<TargetLanguage, string>> = {
     vi: { en: "Truyện và hội thoại bằng tiếng Anh-Mỹ và Anh-Anh", zh: "Tiếng Phổ thông với từ vựng thực tế hằng ngày", ja: "Tiếng Nhật giọng Tokyo qua những câu chuyện ngắn" },
     en: { en: "Stories and conversations in American and British English", zh: "Standard Mandarin with practical everyday vocabulary", ja: "Natural Tokyo Japanese through short, focused stories" },
@@ -162,7 +179,7 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
           <span className="flag-orb">{language.flag}</span>
           <span className="language-title"><b>{language.nativeName}</b><small>{language.name}</small></span>
           <span className="language-description">{descriptions[locale][language.id]}</span>
-          <span className="language-stats"><span><BookOpen size={14} /> {lessonsByLanguage[language.id].length} {t("lessons")}</span><span><Trophy size={14} /> {lessonsByLanguage[language.id][0].level}–{lessonsByLanguage[language.id].at(-1)?.level}</span></span>
+          <span className="language-stats">{language.id==="en"?<span><BookOpen size={14}/>{englishCategoryCount??"…"} {t("library")}</span>:<span><Clock3 size={14}/>Coming soon</span>}</span>
           <span className="language-cta">{t("startLearning")} <ArrowRight size={17} /></span>
         </button>)}
       </div>
@@ -361,6 +378,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
   const audioRef = useRef<HTMLAudioElement>(null);
   const sentenceStartedAt = useRef(Date.now());
   const sentence = lesson.sentences[index];
+  const evaluation = evaluateAnswer({ expected: sentence.text, actual: typed, language: lesson.language });
   const lessonDone = progress[lesson.id]?.completed.length ?? 0;
   const percent = Math.round((lessonDone / lesson.sentences.length) * 100);
 
@@ -383,21 +401,13 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
   });
 
   const playSentence = () => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.playbackRate = speed;
-      audio.currentTime = 0;
-      audio.play().then(() => setPlaying(true)).catch(() => {
-        speak(sentence.text, speed, lesson.accent); setPlaying(true); setTimeout(() => setPlaying(false), 1200);
-      });
-    } else {
-      speak(sentence.text, speed, lesson.accent); setPlaying(true); setTimeout(() => setPlaying(false), 1200);
-    }
+    speak(sentence.text, speed, lesson.accent);
   };
 
   const check = () => {
     if (!typed.trim()) return;
-    const nextScore = answerScore(sentence.text, typed);
+    const result = evaluateAnswer({ expected: sentence.text, actual: typed, language: lesson.language });
+    const nextScore = result.correct ? 100 : answerScore(sentence.text, typed);
     setScore(nextScore); setChecked(true);
     const existing = progress[lesson.id] ?? { completed: [], attempts: 0, correct: 0, updatedAt: "" };
     const completed = nextScore >= 80 && !existing.completed.includes(index) ? [...existing.completed, index] : existing.completed;
@@ -435,14 +445,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
           <div className="step-label"><span>{t("sentence").toUpperCase()} {index + 1} / {lesson.sentences.length}</span><i /></div>
 
           <div className="audio-stage">
-            <audio
-              ref={audioRef}
-              src={resolveAudioUrl(sentence.audio)}
-              onEnded={() => { setPlaying(false); if (repeat) playSentence(); }}
-              onPause={() => setPlaying(false)}
-              onPlay={() => setPlaying(true)}
-              onError={(event) => { (event.currentTarget as HTMLAudioElement).removeAttribute("src"); }}
-            />
+            <AudioSegmentPlayer src={resolveAudioUrl(lesson.audioKey ?? sentence.audio) ?? ""} startMs={sentence.startMs ?? 0} endMs={sentence.endMs ?? 4000} playbackRate={speed} repeat={repeat} />
             <button className={`play-main ${playing ? "playing" : ""}`} onClick={() => playing && audioRef.current && !audioRef.current.paused ? audioRef.current.pause() : playSentence()} aria-label="Phát câu">
               {playing ? <Pause size={27} fill="currentColor" /> : <Play size={29} fill="currentColor" />}
             </button>
@@ -459,13 +462,13 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
           <div className={`answer-panel ${checked ? score >= 80 ? "success" : "retry" : ""}`}>
             <div className="answer-heading"><label htmlFor="answer">{t("typePrompt")}</label><span>{typed.length} {t("characters")}</span></div>
             {!checked ? (
-              <textarea id="answer" lang={lesson.language} value={typed} onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) check(); }} placeholder={t("typePlaceholder")} autoFocus />
+              <textarea id="answer" lang={lesson.language} value={typed} onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (checked) next(); else check(); } }} placeholder={t("typePlaceholder")} autoFocus />
             ) : (
-              <div className="word-result">{compareAnswer(sentence.text, typed).map((item, i) => <span key={`${item.word}-${i}`} className={item.status}>{item.word}</span>)}</div>
+              <div className="word-result">{evaluation.tokens.map((item, i) => <span key={`${item.text}-${i}`} className={item.status}>{item.status === "hidden" ? "*****" : item.text}</span>)}</div>
             )}
             <div className="answer-footer">
               {!checked ? <span><Keyboard size={16} /> {t("caseHint")}</span> : <div className="score-message"><span className="score-icon">{score >= 80 ? <Check size={18} /> : <RotateCcw size={17} />}</span><div><b>{score >= 80 ? t("excellent") : t("almost")} <em>{score}%</em></b><small>{score >= 80 ? t("correctMessage") : t("retryMessage")}</small></div></div>}
-              <button className="primary-button" onClick={checked ? next : check} disabled={!typed.trim()}>{checked ? <>{t("next")} <ArrowRight size={17} /></> : <>{t("check")} <Check size={17} /></>}</button>
+              <button className="primary-button" onClick={checked ? next : check} disabled={!typed.trim() || (checked && !evaluation.correct)}>{checked ? <>{t("next")} <ArrowRight size={17} /></> : <>{t("check")} <Check size={17} /></>}</button>
             </div>
           </div>
 
@@ -488,7 +491,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
         </aside>
       </main>
 
-      {showTranscript && <TranscriptModal lesson={lesson} t={t} onClose={() => setShowTranscript(false)} onPlay={(text) => speak(text, speed, lesson.accent)} />}
+      {showTranscript && <TranscriptModal lesson={lesson} audioUrl={lesson.audioKey ? resolveAudioUrl(lesson.audioKey) : undefined} t={t} onClose={() => setShowTranscript(false)} onPlay={(text) => speak(text, speed, lesson.accent)} />}
     </div>
   );
 }
@@ -518,6 +521,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     {open && <div className="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
+      {auth.user.isAdmin && <button onClick={() => { window.location.hash="/admin/listening"; setOpen(false); }}><Library size={16} />Content management</button>}
       <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}
@@ -556,8 +560,8 @@ function LeaderRow({ entry, current, t }: { entry: LeaderboardEntry; current: bo
   return <div className={`leader-row ${current ? "is-current" : ""}`}><span className={`rank rank-${entry.rank}`}>{entry.rank <= 3 ? ["🥇", "🥈", "🥉"][entry.rank - 1] : entry.rank}</span><span className="leader-avatar">{entry.avatar_url ? <img src={entry.avatar_url} alt="" referrerPolicy="no-referrer" /> : initials}</span><div className="leader-name"><b>{entry.display_name}</b><small>{Math.round(entry.active_seconds / 60)} {t("activeMinutes")} · {entry.completed_sentences} {t("sentences")}</small></div><strong>{entry.points} <small>{t("points")}</small></strong></div>;
 }
 
-function TranscriptModal({ lesson, t, onClose, onPlay }: { lesson: Lesson; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal transcript-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("fullTranscript")}</span><h2>{lesson.title}</h2><p className="modal-summary">{lesson.summary}</p><div className="transcript-lines">{lesson.sentences.map((sentence, index) => <button key={sentence.id} onClick={() => onPlay(sentence.text)}><span>{index + 1}</span><div><b>{sentence.text}</b><small>{sentence.translation}</small></div><Play size={15} /></button>)}</div></section></div>;
+function TranscriptModal({ lesson, audioUrl, t, onClose, onPlay }: { lesson: Lesson; audioUrl?: string; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal transcript-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("fullTranscript")}</span><h2>{lesson.title}</h2><p className="modal-summary">{lesson.summary}</p>{audioUrl && <audio className="full-transcript-audio" controls preload="metadata" src={audioUrl} aria-label="Full lesson audio" />}<div className="transcript-lines">{lesson.sentences.map((sentence, index) => <button key={sentence.id} onClick={() => onPlay(sentence.text)}><span>{index + 1}</span><div><b>{sentence.text}</b><small>{sentence.translation}</small></div><Play size={15} /></button>)}</div></section></div>;
 }
 
 function SettingsModal({ t, onClose, onReset }: { t: ReturnType<typeof getT>; onClose: () => void; onReset: () => void }) {

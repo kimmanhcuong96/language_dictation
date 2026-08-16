@@ -7,6 +7,8 @@ export interface Sentence {
   text: string;
   translation: string;
   audio?: string;
+  startMs?: number;
+  endMs?: number;
 }
 
 export interface Lesson {
@@ -22,6 +24,8 @@ export interface Lesson {
   emoji: string;
   accent: "US" | "UK" | "Mandarin" | "Tokyo";
   sentences: Sentence[];
+  audioKey?: string;
+  durationMs?: number;
 }
 
 export interface LessonProgress {

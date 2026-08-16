@@ -97,6 +97,10 @@ R2 phù hợp với audio public vì có free tier và không tính phí egress 
 
 Để tiết kiệm dung lượng/băng thông, audio production nên dùng MP3 mono 64–96 kbps hoặc Opus. Đặt `Cache-Control: public, max-age=31536000, immutable` cho object có tên/version bất biến. Tuyệt đối không đưa R2 access key vào biến `VITE_*` vì các biến này xuất hiện trong bundle trình duyệt.
 
+## Listening content
+
+Nội dung English mới được đọc từ Neon, dùng một file audio gốc trên R2 và các mốc câu trong database. Xem [LISTENING_CONTENT.md](./LISTENING_CONTENT.md) để cấu hình bucket, migration, quyền admin, import/căn chỉnh và publish bài học.
+
 ## Audio demo
 
 Bản demo dùng giọng TTS sẵn có trong trình duyệt khi URL audio chưa tồn tại, nên mọi bài vẫn luyện được ngay mà không cần tải file từ nguồn khác. Khi có giọng đọc thật, chỉ cần upload đúng object key lên R2; ứng dụng sẽ ưu tiên file đó và chỉ dùng TTS làm fallback.

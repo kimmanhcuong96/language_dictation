@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "me2listen",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-08",
+  "compatibility_date": "2026-08-16",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
@@ -12,8 +12,13 @@
   },
   "vars": {
     "GOOGLE_CLIENT_ID": "1059777304131-gour3h7dbrfe648mia9qvnj8peqep9qa.apps.googleusercontent.com",
-    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev"
+    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev",
+    "ADMIN_EMAILS": ""
   },
+  "r2_buckets": [
+    { "binding": "LISTENING_AUDIO", "bucket_name": "me2listen-audio" }
+  ],
+  "ai": { "binding": "AI" },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

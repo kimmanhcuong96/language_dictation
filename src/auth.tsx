@@ -7,6 +7,7 @@ export interface AccountUser {
   displayName: string;
   avatarUrl: string | null;
   leaderboardVisible: boolean;
+  isAdmin: boolean;
 }
 
 export interface ActivityEvent {
@@ -38,6 +39,9 @@ interface AuthContextValue {
   recordActivity: (event: Omit<ActivityEvent, "eventId">) => Promise<void>;
   syncProgress: (local: ProgressMap, lessonLanguages: Record<string, TargetLanguage>) => Promise<ProgressMap>;
   leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
+  saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
+  adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
+  adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -155,6 +159,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return merged;
     },
     leaderboard: async (period) => api(`/api/leaderboard?period=${period}`),
+    saveListeningProgress: async (input) => {
+      if (!csrf) throw new Error("not_authenticated");
+      await api("/api/listening/progress", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    adminImportLesson: async (form) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api("/api/listening/admin/import", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
+    },
+    adminReviewLesson: async (lessonId, input) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
   }), [user, loading, csrf, sendActivity]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
