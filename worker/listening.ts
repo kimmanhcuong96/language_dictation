@@ -109,8 +109,8 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   const duplicateRows = await sql`SELECT 1 FROM listening_lessons WHERE section_id=${sectionId} AND slug=${slug} LIMIT 1`; if (duplicateRows.length) return json({ error: "lesson_slug_exists" }, 409);
   const lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/en/lessons/${lessonId}/audio.${extension}`;
   await env.LISTENING_AUDIO.put(audioKey, audio, { httpMetadata: { contentType: audio.type, cacheControl: "public, max-age=86400" } });
-  await sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`;
   try {
+    await sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`;
     const sentences = await alignLessonImport(env, audio, transcript, durationMs);
     await sql.transaction(async tx => {
       await tx`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:"workers-ai-whisper"})}::jsonb,999,false,${jobId})`;
@@ -119,7 +119,21 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
     });
     const reviewRows = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
     return json({ jobId, lessonId, status: "READY_FOR_REVIEW", sentences: reviewRows });
-  } catch (error) { const message = error instanceof Error ? error.message.slice(0,500) : "alignment_failed"; await sql`UPDATE listening_import_jobs SET status='FAILED',error_message=${message},updated_at=now() WHERE id=${jobId}`; return json({ error: "alignment_failed", jobId }, 422); }
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "alignment_failed";
+    try {
+      await sql.transaction(async tx => {
+        await tx`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`;
+        await tx`DELETE FROM listening_lessons WHERE id=${lessonId}`;
+        await tx`DELETE FROM listening_import_jobs WHERE id=${jobId}`;
+      });
+    } catch (cleanupError) {
+      console.error(JSON.stringify({ event: "listening_import_database_cleanup_failed", lessonId, jobId, message: cleanupError instanceof Error ? cleanupError.message : "unknown" }));
+    }
+    try { await env.LISTENING_AUDIO.delete(audioKey); }
+    catch (cleanupError) { console.error(JSON.stringify({ event: "listening_import_audio_cleanup_failed", audioKey, message: cleanupError instanceof Error ? cleanupError.message : "unknown" })); }
+    return json({ error: "alignment_failed", details: message }, 422);
+  }
 }
 
 async function reviewLesson(request: Request, env: Env, url: URL) {
