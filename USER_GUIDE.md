@@ -99,8 +99,8 @@ Không thêm số thứ tự đầu dòng. Transcript tối đa 50.000 ký tự 
 1. Đăng nhập bằng tài khoản nằm trong `ADMIN_EMAILS`.
 2. Mở menu tài khoản → **Content management**, hoặc mở `#/admin/listening`.
 3. Chọn đúng **Section** English.
-4. Nhập Title, Slug, Level; chọn Audio; dán Transcript.
-5. Slug chỉ dùng chữ thường, số và dấu gạch ngang, ví dụ `morning-market`.
+4. Nhập Title, Level; chọn Audio; dán Transcript.
+5. Hệ thống tự tạo slug từ Title theo dạng chữ thường, bỏ ký tự đặc biệt và nối từ bằng dấu gạch ngang. Ví dụ `First Snowfall` thành `first-snowfall`.
 6. Bấm **Process**.
 
 Hệ thống sẽ upload audio vào R2, gọi Workers AI lấy cue/VTT, căn cue với transcript, rồi tạo lesson draft chưa public. Nếu thất bại, bài chưa được publish; hãy kiểm tra lại audio/transcript và import mới.
