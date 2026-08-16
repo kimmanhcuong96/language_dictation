@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
 import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle } from "../src/lib/slug";
+import { resolveObjectRange } from "../src/lib/httpRange";
 import { alignLessonImport } from "./listening-import";
 
 export interface ListeningSession { id: string; email: string; }
@@ -62,13 +63,21 @@ async function getLesson(env: Env, url: URL) {
 async function serveAudio(request: Request, env: Env, url: URL) {
   const key = url.pathname.slice("/api/listening/audio/".length).split("/").map(decodeURIComponent).join("/");
   if (!key.startsWith("listening/") || key.includes("..") || key.length > 1024) return json({ error: "invalid_audio_key" }, 422);
-  const object = await env.LISTENING_AUDIO.get(key, { range: request.headers, onlyIf: request.headers });
+  if (request.method === "HEAD") {
+    const object = await env.LISTENING_AUDIO.head(key);
+    if (!object) return json({ error: "audio_not_found" }, 404);
+    const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "bytes"); headers.set("content-length", String(object.size)); headers.set("cache-control", "public, max-age=86400");
+    return new Response(null, { status: 200, headers });
+  }
+  const options: R2GetOptions = request.headers.has("Range") ? { range: request.headers, onlyIf: request.headers } : { onlyIf: request.headers };
+  const object = await env.LISTENING_AUDIO.get(key, options);
   if (!object) return json({ error: "audio_not_found" }, 404);
   const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "bytes"); headers.set("cache-control", "public, max-age=86400");
   if (!("body" in object)) return new Response(null, { status: 304, headers });
-  let status = 200;
-  if (object.range) { const start = "suffix" in object.range ? Math.max(0, object.size - object.range.suffix) : (object.range.offset ?? 0); const length = "suffix" in object.range ? Math.min(object.size, object.range.suffix) : (object.range.length ?? object.size - start); headers.set("content-range", `bytes ${start}-${start + length - 1}/${object.size}`); headers.set("content-length", String(length)); status = 206; }
-  if (request.method === "HEAD") return new Response(null, { status, headers });
+  const range = resolveObjectRange(object.range, object.size);
+  const status = range ? 206 : 200;
+  if (range) { headers.set("content-range", `bytes ${range.start}-${range.start + range.length - 1}/${object.size}`); headers.set("content-length", String(range.length)); }
+  else headers.set("content-length", String(object.size));
   return new Response(object.body, { status, headers });
 }
 
