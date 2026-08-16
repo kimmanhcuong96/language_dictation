@@ -6,8 +6,8 @@ The listening library stores metadata and sentence timestamps in Neon and keeps 
 
 1. Create the configured bucket: `pnpm exec wrangler r2 bucket create me2listen-audio`.
 2. Apply database migrations with `pnpm db:migrate` in the intended environment.
-3. Set `DATABASE_URL`, Google OAuth secrets, and `ADMIN_EMAILS` (a comma-separated allowlist) as Worker secrets or environment variables. Do not commit their values.
-4. Deploy the Worker. The `AI` and `LISTENING_AUDIO` bindings are declared in `wrangler.jsonc`.
+3. Set `DATABASE_URL`, Google OAuth secrets, `ADMIN_EMAILS`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_AI_TOKEN` as Worker secrets or environment variables. The AI token needs Workers AI Read/Write permissions. Do not commit their values.
+4. Deploy the Worker. The `LISTENING_AUDIO` binding is declared in `wrangler.jsonc`; Workers AI is called through the Cloudflare REST API.
 
 ## Import and publish
 

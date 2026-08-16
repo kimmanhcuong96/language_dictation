@@ -18,7 +18,6 @@
   "r2_buckets": [
     { "binding": "LISTENING_AUDIO", "bucket_name": "me2listen-audio" }
   ],
-  "ai": { "binding": "AI" },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

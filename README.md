@@ -70,7 +70,9 @@ Local development: sao chép `.dev.vars.example` thành `.dev.vars`, điền Goo
 - Email không bao giờ xuất hiện trong API bảng xếp hạng.
 - Hồ sơ mới mặc định không công khai; user phải chủ động bật “Hiện trên bảng xếp hạng”.
 
-## Lưu audio miễn phí với Cloudflare R2
+## R2 legacy cho dữ liệu demo cũ
+
+Phần này chỉ áp dụng cho audio demo legacy trong `src/data/lessons.ts`, không áp dụng cho listening content mới. Với lesson English mới, phải dùng bucket `me2listen-audio` và màn hình quản trị theo [USER_GUIDE.md](./USER_GUIDE.md). Không upload trực tiếp vào bucket legacy rồi kỳ vọng lesson mới xuất hiện.
 
 R2 phù hợp với audio public vì có free tier và không tính phí egress trực tiếp. Ứng dụng không gọi API R2 và không chứa secret ở frontend; nó chỉ đọc URL public từ CDN.
 
@@ -100,6 +102,8 @@ R2 phù hợp với audio public vì có free tier và không tính phí egress 
 ## Listening content
 
 Nội dung English mới được đọc từ Neon, dùng một file audio gốc trên R2 và các mốc câu trong database. Xem [LISTENING_CONTENT.md](./LISTENING_CONTENT.md) để cấu hình bucket, migration, quyền admin, import/căn chỉnh và publish bài học.
+
+Hướng dẫn thao tác dành cho người quản lý nội dung: [USER_GUIDE.md](./USER_GUIDE.md).
 
 ## Audio demo
 
