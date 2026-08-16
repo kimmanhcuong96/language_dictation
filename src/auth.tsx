@@ -41,7 +41,8 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const OUTBOX_KEY = "echotype-activity-outbox-v1";
+const OUTBOX_KEY = "me2listen-activity-outbox-v1";
+const LEGACY_OUTBOX_KEY = "echotype-activity-outbox-v1";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
@@ -51,7 +52,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function loadOutbox(): ActivityEvent[] {
-  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? "[]") as ActivityEvent[]; } catch { return []; }
+  try {
+    const current = localStorage.getItem(OUTBOX_KEY);
+    const legacy = localStorage.getItem(LEGACY_OUTBOX_KEY);
+    return JSON.parse(current ?? legacy ?? "[]") as ActivityEvent[];
+  } catch { return []; }
 }
 
 function saveOutbox(events: ActivityEvent[]) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(events.slice(-200))); }

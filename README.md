@@ -1,4 +1,4 @@
-# EchoType — ứng dụng luyện nghe chép chính tả
+# Me2Listen — ứng dụng luyện nghe chép chính tả
 
 Một ứng dụng React + TypeScript lấy cảm hứng từ luồng học của Daily Dictation: nghe từng câu, gõ lại, nhận phản hồi theo từng từ, đọc bản dịch và xem transcript toàn bài. Giao diện và toàn bộ nội dung mẫu trong repo được thiết kế/biên soạn mới.
 

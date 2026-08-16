@@ -57,7 +57,10 @@ function App() {
   const auth = useAuth();
   const [view, setView] = useState<View>(getInitialView);
   const [progress, setProgress] = useState<ProgressMap>(loadProgress);
-  const [locale, setLocale] = useState<UiLocale>(() => (localStorage.getItem("echotype-locale") as UiLocale) || "vi");
+  const [locale, setLocale] = useState<UiLocale>(() => {
+    const saved = localStorage.getItem("me2listen-locale") ?? localStorage.getItem("echotype-locale");
+    return saved === "en" || saved === "zh" || saved === "ja" || saved === "vi" ? saved : "vi";
+  });
 
   useEffect(() => {
     const onHash = () => setView(getInitialView());
@@ -66,10 +69,10 @@ function App() {
   }, []);
 
   useEffect(() => saveProgress(progress), [progress]);
-  useEffect(() => localStorage.setItem("echotype-locale", locale), [locale]);
+  useEffect(() => localStorage.setItem("me2listen-locale", locale), [locale]);
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = view.page === "home" ? "EchoType — Choose your language" : "EchoType — Dictation practice";
+    document.title = "Me2Listen | Listen and Dictate";
   }, [locale, view.page]);
 
   useEffect(() => {
@@ -105,7 +108,39 @@ function App() {
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
 function LocaleSelect({ locale, onLocale, dark = false }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; dark?: boolean }) {
-  return <label className={`locale-select ${dark ? "dark" : ""}`}><Languages size={16} /><select value={locale} onChange={(event) => onLocale(event.target.value as UiLocale)} aria-label="Interface language">{(Object.keys(localeLabels) as UiLocale[]).map((item) => <option key={item} value={item}>{localeLabels[item]}</option>)}</select><ChevronDown size={14} /></label>;
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const locales = Object.keys(localeLabels) as UiLocale[];
+  const flags: Record<UiLocale, string> = { vi: "🇻🇳", en: "🇬🇧", zh: "🇨🇳", ja: "🇯🇵" };
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return <div ref={rootRef} className={`locale-select ${dark ? "dark" : ""}`}>
+    <span id="language-label" className="sr-only">Interface language</span>
+    <button type="button" className="locale-trigger" aria-labelledby="language-label" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <span className="locale-value"><span className={`locale-flag flag-${locale}`} aria-hidden="true">{flags[locale]}</span><span className="locale-name">{localeLabels[locale]}</span></span>
+      <ChevronDown size={17} aria-hidden="true" />
+    </button>
+    {open && <div className="locale-menu" role="listbox" aria-labelledby="language-label">
+      {locales.map((item) => <button key={item} type="button" role="option" aria-selected={item === locale} className={`locale-option ${item === locale ? "selected" : ""}`} onClick={() => { onLocale(item); setOpen(false); }}>
+        <span className={`locale-flag flag-${item}`} aria-hidden="true">{flags[item]}</span><span>{localeLabels[item]}</span>
+      </button>)}
+    </div>}
+  </div>;
 }
 
 function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; onChoose: (language: TargetLanguage) => void }) {
@@ -139,9 +174,9 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
 
 function Logo() {
   return (
-    <div className="logo" aria-label="EchoType home">
-      <span className="logo-mark"><span /><span /><span /><span /><span /></span>
-      <span>echo<span>type</span></span>
+    <div className="logo" aria-label="Me2Listen home">
+      <span className="logo-mark"><img src="/me2write-favicon.svg" alt="" /></span>
+      <span>me2<span>listen</span></span>
     </div>
   );
 }
@@ -278,7 +313,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
           }) : <div className="empty-state"><Search size={28} /><h3>{t("noLessons")}</h3><p>{t("retryFilter")}</p></div>}
         </section>
 
-        <footer>© 2026 EchoType · Luyện nghe tốt hơn, từng câu một.</footer>
+        <footer>© 2026 Me2Listen · Luyện nghe tốt hơn, từng câu một.</footer>
       </main>
 
       {showSettings && <SettingsModal t={t} onClose={() => setShowSettings(false)} onReset={() => { clearProgress(); location.reload(); }} />}

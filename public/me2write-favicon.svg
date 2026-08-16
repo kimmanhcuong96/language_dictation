@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="60" y1="60" x2="452" y2="452" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB84D"/>
+      <stop offset="0.48" stop-color="#FF6B8A"/>
+      <stop offset="1" stop-color="#087F5B"/>
+    </linearGradient>
+  </defs>
+  <rect x="28" y="28" width="456" height="456" rx="118" fill="url(#bg)"/>
+  <path d="M105 94C165 52 248 49 318 70C353 80 384 98 410 122" fill="none" stroke="#FFFFFF" stroke-opacity=".16" stroke-width="20" stroke-linecap="round"/>
+  <path d="M142 228 C148 173 192 139 253 139 C320 139 366 175 366 229 C366 271 341 298 302 323 L232 369 H371 V416 H137 V378 L268 292 C302 270 318 253 318 230 C318 200 293 181 254 181 C216 181 189 201 183 231 Z" fill="#FFFFFF"/>
+  <!-- Listening cue: compact headphones + waveform, replacing the pen -->
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M337 184 C337 145 365 119 400 119 C435 119 463 145 463 184" stroke-width="16"/>
+    <path d="M337 184 V221 C337 232 346 241 357 241 H363 V184 H357 C346 184 337 193 337 204" stroke-width="14"/>
+    <path d="M463 184 V221 C463 232 454 241 443 241 H437 V184 H443 C454 184 463 193 463 204" stroke-width="14"/>
+    <path d="M382 185 V220 M400 169 V235 M418 184 V220" stroke-width="12"/>
+  </g>
+  <circle cx="130" cy="136" r="13" fill="#FFF06A"/>
+</svg>
