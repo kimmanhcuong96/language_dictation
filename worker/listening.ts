@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { parsePreTimedSegments, validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
+import { parsePreTimedSrt, validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
 import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle } from "../src/lib/slug";
 import { resolveObjectRange } from "../src/lib/httpRange";
@@ -245,7 +245,7 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   let form: FormData;
   try { form = await request.formData(); }
   catch { return json({ error: "invalid_multipart_form" }, 400); }
-  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode") === "pre_timed" ? "pre_timed" : "ai", timing = form.get("timing");
+  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode") === "pre_timed" ? "pre_timed" : "ai", srt = form.get("srt") ?? form.get("timing");
   const durationMs = typeof durationRaw === "string" ? Number(durationRaw) : NaN;
   if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
   if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || typeof level !== "string" || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
@@ -256,7 +256,7 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   const languageCode = String(sectionRows[0].language_code), lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/${languageCode}/lessons/${lessonId}/audio.${extension}`;
   let sentences: AlignedSentence[];
   if (typeof form.get("importMode") === "string" && form.get("importMode") !== "ai" && form.get("importMode") !== "pre_timed") return json({ error: "invalid_import_mode" }, 422);
-  try { sentences = importMode === "pre_timed" ? parsePreTimedSegments(typeof timing === "string" ? timing : "", transcript) : await alignLessonImport(env, audio, transcript, durationMs); if (importMode === "pre_timed") { const errors = validateAlignedSentences(sentences, durationMs); if (errors.length) throw new Error(errors.join(",")); } }
+  try { sentences = importMode === "pre_timed" ? parsePreTimedSrt(typeof srt === "string" ? srt : "", transcript) : await alignLessonImport(env, audio, transcript, durationMs); if (importMode === "pre_timed") { const errors = validateAlignedSentences(sentences, durationMs); if (errors.length) throw new Error(errors.join(",")); } }
   catch (error) {
     console.error(JSON.stringify({ event: "listening_import_alignment_failed", jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
     return importMode === "pre_timed" ? json({ error: "pre_timed_validation_failed", details: error instanceof Error ? error.message : "invalid_timing" }, 422) : alignmentErrorResponse(error);
@@ -265,7 +265,7 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
     await env.LISTENING_AUDIO.put(audioKey, audio, { httpMetadata: { contentType: audio.type, cacheControl: "public, max-age=86400" } });
     const importQueries: TransactionQuery[] = [
       sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`,
-      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:importMode === "pre_timed" ? "pre-timed-script" : "workers-ai-whisper"})}::jsonb,999,false,${jobId})`,
+      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:importMode === "pre_timed" ? "srt-script" : "workers-ai-whisper"})}::jsonb,999,false,${jobId})`,
       sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
       ...sentences.map(sentence => sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer(languageCode as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
       sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='READY_FOR_REVIEW',updated_at=now() WHERE id=${jobId}`,

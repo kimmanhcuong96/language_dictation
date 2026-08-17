@@ -2,7 +2,6 @@ export interface AlignedSentence { position: number; text: string; startMs: numb
 export interface AudioTranscriptAligner { align(input: { audio: ArrayBuffer; transcript: string; language: string }): Promise<AlignedSentence[]>; }
 export interface LessonImportInput { audioKey: string; audioDurationMs: number; transcript: string; language: string; }
 export interface TimedCue { text: string; startMs: number; endMs: number; }
-export interface PreTimedSegment { position?: unknown; text?: unknown; startMs?: unknown; endMs?: unknown; start?: unknown; end?: unknown; }
 
 /** Deterministic source adapter for the preferred one-sentence-per-line format. */
 export function splitTranscript(transcript: string): string[] {
@@ -23,33 +22,29 @@ export function validateAlignedSentences(sentences: AlignedSentence[], audioDura
   return [...new Set(errors)];
 }
 
-export function parsePreTimedSegments(timingJson: string, transcript: string): AlignedSentence[] {
-  let parsed: unknown;
-  try { parsed = JSON.parse(timingJson); } catch { throw new Error("pre_timed_json_invalid"); }
-  const rawSegments = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && Array.isArray((parsed as { segments?: unknown }).segments) ? (parsed as { segments: unknown[] }).segments : null;
-  if (!rawSegments?.length) throw new Error("pre_timed_segments_missing");
-  const lines = splitTranscript(transcript);
-  if (rawSegments.length !== lines.length) throw new Error("pre_timed_segment_script_count_mismatch");
-  const sentences: AlignedSentence[] = [];
-  for (let index = 0; index < rawSegments.length; index += 1) {
-    const item = rawSegments[index];
-    if (!item || typeof item !== "object") throw new Error(`pre_timed_segment_${index + 1}_invalid`);
-    const segment = item as PreTimedSegment;
-    const position = Number(segment.position ?? index + 1);
-    const startMs = toMilliseconds(segment.startMs ?? segment.start);
-    const endMs = toMilliseconds(segment.endMs ?? segment.end);
-    if (!Number.isInteger(position) || position !== index + 1) throw new Error("pre_timed_positions_invalid");
-    if (startMs === null || endMs === null) throw new Error(`pre_timed_segment_${index + 1}_timestamp_invalid`);
-    if (segment.text !== undefined && normalizeComparableText(String(segment.text)) !== normalizeComparableText(lines[index])) throw new Error(`pre_timed_segment_${index + 1}_script_mismatch`);
-    sentences.push({ position, text: lines[index], startMs, endMs, confidence: 1 });
-  }
-  return sentences;
+export function parseSrt(srt: string): TimedCue[] {
+  const blocks = srt.replace(/^\uFEFF/u, "").trim().split(/\r?\n\s*\r?\n/u).filter(Boolean);
+  if (!blocks.length) throw new Error("pre_timed_srt_empty");
+  return blocks.map((block, index) => {
+    const lines = block.split(/\r?\n/u).map((line) => line.trim());
+    if (lines[0] !== String(index + 1)) throw new Error(`pre_timed_srt_sequence_invalid_${index + 1}`);
+    const timing = lines[1]?.match(/^(\d{2}:\d{2}:\d{2}[,.]\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}[,.]\d{3})(?:\s+.*)?$/u);
+    if (!timing) throw new Error(`pre_timed_srt_timing_invalid_${index + 1}`);
+    const startMs = parseTimestamp(timing[1]), endMs = parseTimestamp(timing[2]);
+    const text = lines.slice(2).join(" ").replace(/<[^>]+>/gu, "").trim();
+    if (startMs === null || endMs === null || endMs <= startMs) throw new Error(`pre_timed_srt_timing_invalid_${index + 1}`);
+    if (!text) throw new Error(`pre_timed_srt_text_missing_${index + 1}`);
+    return { text, startMs, endMs };
+  });
 }
 
-function toMilliseconds(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return Number.isInteger(value) ? value : Math.round(value * 1000);
-  if (typeof value === "string" && value.trim()) return parseTimestamp(value);
-  return null;
+export function parsePreTimedSrt(srt: string, transcript: string): AlignedSentence[] {
+  const cues = parseSrt(srt), lines = splitTranscript(transcript);
+  if (cues.length !== lines.length) throw new Error("pre_timed_srt_script_count_mismatch");
+  return cues.map((cue, index) => {
+    if (normalizeComparableText(cue.text) !== normalizeComparableText(lines[index])) throw new Error(`pre_timed_srt_script_mismatch_${index + 1}`);
+    return { position: index + 1, text: lines[index], startMs: cue.startMs, endMs: cue.endMs, confidence: 1 };
+  });
 }
 
 function normalizeComparableText(value: string): string {

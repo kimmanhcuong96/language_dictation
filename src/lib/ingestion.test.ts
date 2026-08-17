@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alignTranscriptToVtt, createDraftSentences, parsePreTimedSegments, parseVtt, splitTranscript, validateAlignedSentences } from "./ingestion";
+import { alignTranscriptToVtt, createDraftSentences, parsePreTimedSrt, parseSrt, parseVtt, splitTranscript, validateAlignedSentences } from "./ingestion";
 
 describe("lesson ingestion foundation", () => {
   it("parses deterministic one-sentence-per-line transcripts", () => expect(splitTranscript("One.\n\n Two.")).toEqual(["One.", "Two."]));
@@ -10,10 +10,11 @@ describe("lesson ingestion foundation", () => {
     expect(parseVtt(vtt)).toHaveLength(2);
     expect(alignTranscriptToVtt("Canonical one.\nCanonical two.", vtt, 2000).map((item) => item.text)).toEqual(["Canonical one.", "Canonical two."]);
   });
-  it("normalizes a pre-timed import into the shared sentence format", () => expect(parsePreTimedSegments('[{"startMs":0,"endMs":900},{"startMs":900,"endMs":1800}]',"One.\nTwo.")).toEqual([{position:1,text:"One.",startMs:0,endMs:900,confidence:1},{position:2,text:"Two.",startMs:900,endMs:1800,confidence:1}]));
-  it("rejects missing, overlapping and unmappable pre-timed segments", () => {
-    expect(()=>parsePreTimedSegments('[{"startMs":0,"endMs":900}]',"One.\nTwo.")).toThrow("pre_timed_segment_script_count_mismatch");
-    expect(validateAlignedSentences(parsePreTimedSegments('[{"startMs":0,"endMs":1000},{"startMs":900,"endMs":1800}]',"One.\nTwo."),1800)).toContain("timestamps_not_ordered");
-    expect(()=>parsePreTimedSegments('[{"startMs":0,"endMs":900,"text":"Wrong"}]',"One.")).toThrow("pre_timed_segment_1_script_mismatch");
+  it("normalizes SRT into the shared sentence format", () => expect(parsePreTimedSrt("1\n00:00:00,000 --> 00:00:00,900\nOne.\n\n2\n00:00:00,900 --> 00:00:01,800\nTwo.","One.\nTwo.")).toEqual([{position:1,text:"One.",startMs:0,endMs:900,confidence:1},{position:2,text:"Two.",startMs:900,endMs:1800,confidence:1}]));
+  it("rejects invalid SRT and unmappable pre-timed segments", () => {
+    expect(()=>parseSrt("1\n00:00:00,000 --> 00:00:00,900\nOne.")).not.toThrow();
+    expect(()=>parsePreTimedSrt("1\n00:00:00,000 --> 00:00:00,900\nOne.","One.\nTwo.")).toThrow("pre_timed_srt_script_count_mismatch");
+    expect(()=>parsePreTimedSrt("1\n00:00:00,000 --> 00:00:00,900\nWrong.","One.")).toThrow("pre_timed_srt_script_mismatch_1");
+    expect(validateAlignedSentences(parsePreTimedSrt("1\n00:00:00,000 --> 00:00:01,000\nOne.\n\n2\n00:00:00,900 --> 00:00:01,800\nTwo.","One.\nTwo."),1800)).toContain("timestamps_not_ordered");
   });
 });
