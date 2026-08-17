@@ -41,12 +41,15 @@ import { evaluateAnswer } from "./lib/dictation";
 import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
-import { AdminListeningPage, EnglishLearningApp } from "./listening";
+import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
 
-type View = { page: "home" } | { page: "english" } | { page: "admin" } | { page: "coming"; language: "ja"|"zh" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
+type View = { page: "home" } | { page: "english" } | { page: "admin" } | { page: "adminManagement" } | { page: "canonicalLesson"; path:string } | { page: "coming"; language: "ja"|"zh" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
 
 const getInitialView = (): View => {
+  const canonicalMatch = window.location.pathname.match(/^\/lessons\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+$/u);
+  if (canonicalMatch) return { page: "canonicalLesson", path: window.location.pathname };
   if (window.location.hash === "#/admin/listening") return { page: "admin" };
+  if (window.location.hash === "#/admin/listening/manage") return { page: "adminManagement" };
   if (/^#\/learn\/en(?:\/.*)?$/u.test(window.location.hash)) return { page: "english" };
   const comingMatch = window.location.hash.match(/^#\/learn\/(ja|zh)(?:\/.*)?$/u);
   if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja"|"zh" };
@@ -89,7 +92,8 @@ function App() {
   }, [auth.user?.id]);
 
   const navigate = (next: View) => {
-    window.location.hash = next.page === "home" ? "/" : next.page === "english" ? "/learn/en" : next.page === "admin" ? "/admin/listening" : next.page === "coming" ? `/learn/${next.language}` : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
+    if (next.page === "canonicalLesson") { window.history.pushState({}, "", next.path); setView(next); return; }
+    window.location.hash = next.page === "home" ? "/" : next.page === "english" ? "/learn/en" : next.page === "admin" ? "/admin/listening" : next.page === "adminManagement" ? "/admin/listening/manage" : next.page === "coming" ? `/learn/${next.language}` : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
     setView(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -98,8 +102,12 @@ function App() {
     <LanguageHome locale={locale} onLocale={setLocale} onChoose={(language) => navigate(language==="en"?{page:"english"}:{page:"coming",language})} />
   ) : view.page === "english" ? (
     <EnglishLearningApp locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
+  ) : view.page === "canonicalLesson" ? (
+    <EnglishLearningApp canonicalPath={view.path} locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
   ) : view.page === "admin" ? (
     <AdminListeningPage onHome={() => navigate({page:"home"})}/>
+  ) : view.page === "adminManagement" ? (
+    <LessonManagementPage onHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (

@@ -97,6 +97,14 @@ CREATE TABLE IF NOT EXISTS listening_sentence_progress (
   PRIMARY KEY(user_id, sentence_id)
 );
 
+CREATE TABLE IF NOT EXISTS listening_manifest_meta (
+  id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id = TRUE),
+  version BIGINT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO listening_manifest_meta(id, version) VALUES (TRUE, 1)
+ON CONFLICT(id) DO NOTHING;
+
 INSERT INTO languages(id, code, name, native_name, sort_order, is_enabled)
 VALUES ('language-en', 'en', 'English', 'English', 1, TRUE),
        ('language-ja', 'ja', 'Japanese', '日本語', 2, TRUE),

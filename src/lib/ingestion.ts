@@ -2,6 +2,7 @@ export interface AlignedSentence { position: number; text: string; startMs: numb
 export interface AudioTranscriptAligner { align(input: { audio: ArrayBuffer; transcript: string; language: string }): Promise<AlignedSentence[]>; }
 export interface LessonImportInput { audioKey: string; audioDurationMs: number; transcript: string; language: string; }
 export interface TimedCue { text: string; startMs: number; endMs: number; }
+export interface PreTimedSegment { position?: unknown; text?: unknown; startMs?: unknown; endMs?: unknown; start?: unknown; end?: unknown; }
 
 /** Deterministic source adapter for the preferred one-sentence-per-line format. */
 export function splitTranscript(transcript: string): string[] {
@@ -20,6 +21,39 @@ export function validateAlignedSentences(sentences: AlignedSentence[], audioDura
     if (sentence.endMs > audioDurationMs + 250) errors.push(`sentence_${index + 1}_outside_audio`);
   });
   return [...new Set(errors)];
+}
+
+export function parsePreTimedSegments(timingJson: string, transcript: string): AlignedSentence[] {
+  let parsed: unknown;
+  try { parsed = JSON.parse(timingJson); } catch { throw new Error("pre_timed_json_invalid"); }
+  const rawSegments = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" && Array.isArray((parsed as { segments?: unknown }).segments) ? (parsed as { segments: unknown[] }).segments : null;
+  if (!rawSegments?.length) throw new Error("pre_timed_segments_missing");
+  const lines = splitTranscript(transcript);
+  if (rawSegments.length !== lines.length) throw new Error("pre_timed_segment_script_count_mismatch");
+  const sentences: AlignedSentence[] = [];
+  for (let index = 0; index < rawSegments.length; index += 1) {
+    const item = rawSegments[index];
+    if (!item || typeof item !== "object") throw new Error(`pre_timed_segment_${index + 1}_invalid`);
+    const segment = item as PreTimedSegment;
+    const position = Number(segment.position ?? index + 1);
+    const startMs = toMilliseconds(segment.startMs ?? segment.start);
+    const endMs = toMilliseconds(segment.endMs ?? segment.end);
+    if (!Number.isInteger(position) || position !== index + 1) throw new Error("pre_timed_positions_invalid");
+    if (startMs === null || endMs === null) throw new Error(`pre_timed_segment_${index + 1}_timestamp_invalid`);
+    if (segment.text !== undefined && normalizeComparableText(String(segment.text)) !== normalizeComparableText(lines[index])) throw new Error(`pre_timed_segment_${index + 1}_script_mismatch`);
+    sentences.push({ position, text: lines[index], startMs, endMs, confidence: 1 });
+  }
+  return sentences;
+}
+
+function toMilliseconds(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Number.isInteger(value) ? value : Math.round(value * 1000);
+  if (typeof value === "string" && value.trim()) return parseTimestamp(value);
+  return null;
+}
+
+function normalizeComparableText(value: string): string {
+  return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
 }
 
 export function createDraftSentences(transcript: string, audioDurationMs: number): AlignedSentence[] {

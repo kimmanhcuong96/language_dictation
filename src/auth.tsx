@@ -42,6 +42,8 @@ interface AuthContextValue {
   saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
+  adminUpdateLesson: (lessonId: string, input: unknown) => Promise<void>;
+  adminDeleteLesson: (lessonId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -169,7 +171,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     adminReviewLesson: async (lessonId, input) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}/review`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    adminUpdateLesson: async (lessonId, input) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    adminDeleteLesson: async (lessonId) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}`, { method: "DELETE", headers: { "X-CSRF-Token": csrf } });
     },
   }), [user, loading, csrf, sendActivity]);
 

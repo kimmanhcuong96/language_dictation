@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { lessons } from "../src/data/lessons";
 import { answerScore } from "../src/lib/text";
-import { routeListening } from "./listening";
+import { routeListening, serveRobots, serveSeoLesson, serveSitemap } from "./listening";
 
 const SESSION_COOKIE = "__Host-echotype_session";
 const OAUTH_COOKIE = "__Host-echotype_oauth_state";
@@ -19,7 +19,7 @@ type TransactionSql = NeonSql & { transaction(queries: TransactionQuery[]): Prom
 // so TypeScript infers only the callback overload although runtime also accepts query arrays.
 const db = (env:Env) => neon(env.DATABASE_URL) as TransactionSql;
 
-export default { async fetch(request,env,ctx):Promise<Response> { try { const url=new URL(request.url); return withSecurityHeaders(url.pathname.startsWith("/api/")||url.pathname.startsWith("/auth/") ? await routeApi(request,env,ctx,url) : await env.ASSETS.fetch(request)); } catch(error) { console.error(JSON.stringify({event:"request_error",message:error instanceof Error?error.message:"unknown"})); return error instanceof HttpError?json({error:error.code},error.status):json({error:"internal_error"},500); } } } satisfies ExportedHandler<Env>;
+export default { async fetch(request,env,ctx):Promise<Response> { try { const url=new URL(request.url); let response: Response; if (url.pathname === "/sitemap.xml") response = await serveSitemap(env, request); else if (url.pathname === "/robots.txt") response = serveRobots(request); else if (url.pathname.startsWith("/lessons/")) response = await serveSeoLesson(request, env, url); else response = url.pathname.startsWith("/api/")||url.pathname.startsWith("/auth/") ? await routeApi(request,env,ctx,url) : await env.ASSETS.fetch(request); return withSecurityHeaders(response); } catch(error) { console.error(JSON.stringify({event:"request_error",message:error instanceof Error?error.message:"unknown"})); return error instanceof HttpError?json({error:error.code},error.status):json({error:"internal_error"},500); } } } satisfies ExportedHandler<Env>;
 async function routeApi(req:Request,env:Env,ctx:ExecutionContext,url:URL):Promise<Response> { if(url.pathname.startsWith("/api/listening/")){const session=await requireSession(req,env,ctx),mutationValid=req.method==="GET"||req.method==="HEAD"?true:!!session&&await validMutation(req,env,session);return routeListening(req,env,url,session,mutationValid);} if(req.method==="GET"&&url.pathname==="/api/auth/google")return startGoogleAuth(env,ctx,url); if(req.method==="GET"&&url.pathname==="/api/auth/google/callback")return finishGoogleAuth(req,env,ctx,url); if(req.method==="GET"&&url.pathname==="/api/me")return getMe(req,env,ctx); if(req.method==="PATCH"&&url.pathname==="/api/me")return updateMe(req,env,ctx); if(req.method==="POST"&&url.pathname==="/api/logout")return logout(req,env,ctx); if(req.method==="GET"&&url.pathname==="/api/progress")return getProgress(req,env,ctx); if(req.method==="POST"&&url.pathname==="/api/progress/import")return importProgress(req,env,ctx); if(req.method==="POST"&&url.pathname==="/api/progress/events")return recordProgress(req,env,ctx); if(req.method==="GET"&&url.pathname==="/api/leaderboard")return getLeaderboard(req,env,ctx,url); return json({error:"not_found"},404); }
 // Wrangler narrows configured vars to literals; keep the legacy sentinel check for deployments that override this var.
 // @ts-expect-error The dashboard may provide a wider string value at runtime.

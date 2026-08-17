@@ -9,7 +9,7 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*"]
+    "run_worker_first": ["/api/*", "/auth/*", "/lessons/*", "/sitemap.xml", "/robots.txt"]
   },
   "vars": {
     "GOOGLE_CLIENT_ID": "1059777304131-gour3h7dbrfe648mia9qvnj8peqep9qa.apps.googleusercontent.com",
