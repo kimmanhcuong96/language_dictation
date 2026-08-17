@@ -20,7 +20,8 @@ const ja: typeof vi = {
   comingSoon: "近日公開", allTopics: "すべてのトピック", breadcrumb: "パンくずリスト", englishDictation: "英語ディクテーション", chineseDictation: "中国語ディクテーション", japaneseDictation: "日本語ディクテーション", loading: "読み込み中…", loadError: "コンテンツを読み込めませんでした。", retry: "再試行", previous: "前の文", audioUnavailable: "音声を利用できません。", playbackSpeed: "再生速度", saving: "保存中…", lessonComplete: "レッスン完了",
 };
 
-export type TranslationKey = keyof typeof vi;
+const skipTranslations: Record<UiLocale, string> = { vi: "Bỏ qua", en: "Skip", zh: "跳过", ja: "スキップ" };
+export type TranslationKey = keyof typeof vi | "skip";
 export const translations = { vi, en, zh, ja };
 export const localeLabels: Record<UiLocale, string> = { vi: "Tiếng Việt", en: "English", zh: "中文", ja: "日本語" };
-export const translate = (locale: UiLocale, key: TranslationKey) => translations[locale][key];
+export const translate = (locale: UiLocale, key: TranslationKey) => key === "skip" ? skipTranslations[locale] : translations[locale][key];
