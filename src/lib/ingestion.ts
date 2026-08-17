@@ -75,20 +75,53 @@ export function parseVtt(vtt: string): TimedCue[] {
   return cues;
 }
 
-/** Keeps the supplied transcript as truth and uses ASR cue density only for boundaries. */
+interface CueToken {
+  token: string;
+  cueIndex: number;
+  tokenIndex: number;
+  tokenCount: number;
+}
+
+function tokenizeForAlignment(value: string): string[] {
+  const normalized = value.normalize("NFKC").toLocaleLowerCase().replace(/[’']/gu, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  if (!normalized) return [];
+  if (!/\s/u.test(normalized)) return Array.from(normalized);
+  return normalized.split(/\s+/u);
+}
+
+function buildCueTokens(cues: TimedCue[]): CueToken[] {
+  return cues.flatMap((cue, cueIndex) => {
+    const tokens = tokenizeForAlignment(cue.text);
+    return tokens.map((token, tokenIndex) => ({ token, cueIndex, tokenIndex, tokenCount: tokens.length }));
+  });
+}
+
+function tokenTime(cue: TimedCue, token: CueToken, end: boolean): number {
+  const ratio = (token.tokenIndex + (end ? 1 : 0)) / token.tokenCount;
+  return Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratio);
+}
+
+/** Maps only script text that can be found in the ASR cues; unscripted speech is ignored. */
 export function alignTranscriptToVtt(transcript: string, vtt: string, audioDurationMs: number): AlignedSentence[] {
   const lines = splitTranscript(transcript), cues = parseVtt(vtt);
   if (!lines.length) return [];
-  if (!cues.length) return createDraftSentences(transcript, audioDurationMs);
-  const totalWords = lines.reduce((sum, line) => sum + Math.max(1, line.split(/\s+/u).length), 0);
-  const first = cues[0].startMs, last = Math.min(audioDurationMs, cues.at(-1)!.endMs); let consumed = 0;
+  if (!cues.length) throw new Error("transcript_alignment_cues_missing");
+  const cueTokens = buildCueTokens(cues);
+  let cursor = 0;
   return lines.map((text, index) => {
-    const words = Math.max(1, text.split(/\s+/u).length), startRatio = consumed / totalWords; consumed += words;
-    const endRatio = consumed / totalWords, approximateStart = first + (last - first) * startRatio, approximateEnd = first + (last - first) * endRatio;
-    const startCue = cues.reduce((best, cue) => Math.abs(cue.startMs - approximateStart) < Math.abs(best.startMs - approximateStart) ? cue : best, cues[0]);
-    const endCue = cues.reduce((best, cue) => Math.abs(cue.endMs - approximateEnd) < Math.abs(best.endMs - approximateEnd) ? cue : best, cues.at(-1)!);
-    const startMs = index === 0 ? Math.max(0, startCue.startMs) : Math.max(0, Math.round(approximateStart));
-    const endMs = index === lines.length - 1 ? Math.min(audioDurationMs, endCue.endMs) : Math.max(startMs + 1, Math.round(approximateEnd));
+    const scriptTokens = tokenizeForAlignment(text);
+    if (!scriptTokens.length) throw new Error(`transcript_alignment_script_empty_${index + 1}`);
+    const matched: CueToken[] = [];
+    for (const scriptToken of scriptTokens) {
+      const found = cueTokens.findIndex((cueToken, cueIndex) => cueIndex >= cursor && cueToken.token === scriptToken);
+      if (found < 0) throw new Error(`transcript_alignment_unmappable_${index + 1}`);
+      matched.push(cueTokens[found]);
+      cursor = found + 1;
+    }
+    const firstToken = matched[0], lastToken = matched.at(-1)!;
+    const startMs = tokenTime(cues[firstToken.cueIndex], firstToken, false);
+    const endMs = Math.min(audioDurationMs, tokenTime(cues[lastToken.cueIndex], lastToken, true));
+    if (endMs <= startMs) throw new Error(`transcript_alignment_timestamp_invalid_${index + 1}`);
     return { position: index + 1, text, startMs, endMs, confidence: .5 };
   });
 }
