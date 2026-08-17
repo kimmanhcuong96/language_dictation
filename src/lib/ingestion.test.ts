@@ -15,6 +15,10 @@ describe("lesson ingestion foundation", () => {
   it("rejects a script line that cannot be mapped to ASR cues", () => {
     expect(() => alignTranscriptToVtt("Missing line.", "WEBVTT\n\n00:00.000 --> 00:01.000\nOther words", 1000)).toThrow("transcript_alignment_unmappable_1");
   });
+  it("tolerates small ASR word errors while keeping script boundaries", () => {
+    const aligned = alignTranscriptToVtt("Canonical one.\nCanonical two.", "WEBVTT\n\n00:00.000 --> 00:01.000\nIntro\n\n00:01.000 --> 00:02.000\nKanonical wne\n\n00:02.000 --> 00:03.000\nExtra words\n\n00:03.000 --> 00:04.000\nCanonical too", 4000);
+    expect(aligned.map(({ startMs, endMs }) => [startMs, endMs])).toEqual([[1000, 2000], [3000, 4000]]);
+  });
   it("normalizes SRT into the shared sentence format", () => expect(parsePreTimedSrt("1\n00:00:00,000 --> 00:00:00,900\nOne.\n\n2\n00:00:00,900 --> 00:00:01,800\nTwo.","One.\nTwo.")).toEqual([{position:1,text:"One.",startMs:0,endMs:900,confidence:1},{position:2,text:"Two.",startMs:900,endMs:1800,confidence:1}]));
   it("rejects invalid SRT and unmappable pre-timed segments", () => {
     expect(()=>parseSrt("1\n00:00:00,000 --> 00:00:00,900\nOne.")).not.toThrow();

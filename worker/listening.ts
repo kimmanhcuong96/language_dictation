@@ -419,7 +419,7 @@ function alignmentErrorResponse(error: unknown): Response {
   const code = error instanceof Error ? error.message : "alignment_failed";
   if (code === "workers_ai_not_configured" || code === "workers_ai_model_invalid") return json({ error: code }, 503);
   if (code.startsWith("workers_ai_")) return json({ error: "workers_ai_failed" }, 502);
-  return json({ error: "alignment_failed" }, 422);
+  return json({ error: "alignment_failed", details: code.startsWith("transcript_alignment_") ? code : "alignment_failed" }, 422);
 }
 
 async function boundedJson<T>(request: Request): Promise<T> { if(!request.body)throw new RequestBodyError("missing_body",400);const reader=request.body.getReader(),chunks:Uint8Array[]=[];let size=0;while(true){const{value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>MAX_JSON_BYTES){await reader.cancel();throw new RequestBodyError("body_too_large",413);}chunks.push(value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return JSON.parse(new TextDecoder().decode(bytes)) as T; }

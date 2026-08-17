@@ -85,7 +85,7 @@ interface CueToken {
 function tokenizeForAlignment(value: string): string[] {
   const normalized = value.normalize("NFKC").toLocaleLowerCase().replace(/[’']/gu, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   if (!normalized) return [];
-  if (!/\s/u.test(normalized)) return Array.from(normalized);
+  if (!/\s/u.test(normalized)) return /[\u3400-\u9fff\u3040-\u30ff]/u.test(normalized) ? Array.from(normalized) : [normalized];
   return normalized.split(/\s+/u);
 }
 
@@ -101,6 +101,48 @@ function tokenTime(cue: TimedCue, token: CueToken, end: boolean): number {
   return Math.round(cue.startMs + (cue.endMs - cue.startMs) * ratio);
 }
 
+function tokenSimilarity(expected: string, actual: string): number {
+  if (expected === actual) return 1;
+  if (expected.length < 3 || actual.length < 3) return 0;
+  const previous = Array.from({ length: actual.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= expected.length; row += 1) {
+    let diagonal = previous[0]; previous[0] = row;
+    for (let column = 1; column <= actual.length; column += 1) {
+      const next = previous[column];
+      previous[column] = Math.min(previous[column] + 1, previous[column - 1] + 1, diagonal + (expected[row - 1] === actual[column - 1] ? 0 : 1));
+      diagonal = next;
+    }
+  }
+  return 1 - previous[actual.length] / Math.max(expected.length, actual.length);
+}
+
+function findFuzzyScriptSpan(scriptTokens: string[], cueTokens: CueToken[], cursor: number): CueToken[] | null {
+  let best: { score: number; matched: CueToken[] } | null = null;
+  const searchWindow = Math.max(16, scriptTokens.length * 4);
+  for (let start = cursor; start < cueTokens.length; start += 1) {
+    let search = start;
+    const matched: CueToken[] = [];
+    for (const scriptToken of scriptTokens) {
+      let candidate: CueToken | undefined;
+      for (let position = search; position < Math.min(cueTokens.length, search + searchWindow); position += 1) {
+        const similarity = tokenSimilarity(scriptToken, cueTokens[position].token);
+        const acceptable = similarity === 1 || (scriptToken.length >= 3 && similarity >= .65);
+        if (acceptable) { candidate = cueTokens[position]; break; }
+      }
+      if (candidate) { matched.push(candidate); search = cueTokens.indexOf(candidate) + 1; }
+      else search = Math.min(cueTokens.length, search + 1);
+    }
+    if (!matched.length) continue;
+    const spanLength = matched.at(-1)!.cueIndex === matched[0].cueIndex
+      ? matched.at(-1)!.tokenIndex - matched[0].tokenIndex + 1
+      : cueTokens.indexOf(matched.at(-1)!) - cueTokens.indexOf(matched[0]) + 1;
+    const coverage = matched.length / scriptTokens.length;
+    const score = coverage - Math.max(0, spanLength - matched.length) / (scriptTokens.length * 20);
+    if (coverage >= (scriptTokens.length === 1 ? 1 : .65) && (!best || score > best.score)) best = { score, matched };
+  }
+  return best?.matched ?? null;
+}
+
 /** Maps only script text that can be found in the ASR cues; unscripted speech is ignored. */
 export function alignTranscriptToVtt(transcript: string, vtt: string, audioDurationMs: number): AlignedSentence[] {
   const lines = splitTranscript(transcript), cues = parseVtt(vtt);
@@ -111,13 +153,9 @@ export function alignTranscriptToVtt(transcript: string, vtt: string, audioDurat
   return lines.map((text, index) => {
     const scriptTokens = tokenizeForAlignment(text);
     if (!scriptTokens.length) throw new Error(`transcript_alignment_script_empty_${index + 1}`);
-    const matched: CueToken[] = [];
-    for (const scriptToken of scriptTokens) {
-      const found = cueTokens.findIndex((cueToken, cueIndex) => cueIndex >= cursor && cueToken.token === scriptToken);
-      if (found < 0) throw new Error(`transcript_alignment_unmappable_${index + 1}`);
-      matched.push(cueTokens[found]);
-      cursor = found + 1;
-    }
+    const matched = findFuzzyScriptSpan(scriptTokens, cueTokens, cursor);
+    if (!matched) throw new Error(`transcript_alignment_unmappable_${index + 1}`);
+    cursor = cueTokens.indexOf(matched.at(-1)!) + 1;
     const firstToken = matched[0], lastToken = matched.at(-1)!;
     const startMs = tokenTime(cues[firstToken.cueIndex], firstToken, false);
     const endMs = Math.min(audioDurationMs, tokenTime(cues[lastToken.cueIndex], lastToken, true));
