@@ -102,23 +102,41 @@ Không thêm số thứ tự đầu dòng. Transcript tối đa 50.000 ký tự 
 ## 4. Import lesson
 
 1. Đăng nhập bằng tài khoản nằm trong `ADMIN_EMAILS`.
-2. Mở menu tài khoản → **Content management**, hoặc mở `#/admin/listening`.
-3. Chọn đúng **Section** English.
-4. Nhập Title, Level; chọn Audio; dán Transcript.
-5. Hệ thống tự tạo slug từ Title theo dạng chữ thường, bỏ ký tự đặc biệt và nối từ bằng dấu gạch ngang. Ví dụ `First Snowfall` thành `first-snowfall`.
-6. Bấm **Process**.
+2. Mở menu tài khoản → **Quản lý nội dung**, hoặc mở `#/admin/listening`.
+3. Chọn **Nhập bằng AI** hoặc **Nhập không dùng AI**. Nhãn có thể hiển thị bằng `vi`, `en`, `zh` hoặc `ja` theo ngôn ngữ giao diện đang chọn.
 
-Hệ thống sẽ gọi Workers AI lấy cue/VTT và căn cue với transcript trước. Chỉ khi alignment thành công, hệ thống mới upload audio vào R2 rồi tạo import job, lesson và sentence trong cùng một transaction để tạo lesson draft chưa public. Alignment thất bại sẽ không tạo dữ liệu DB hoặc object R2. Nếu upload, ghi database hoặc truy vấn kết quả cuối bị lỗi, hệ thống sẽ xóa lesson/sentence/import-job cùng audio R2 và kiểm tra lại cleanup; bạn có thể sửa dữ liệu và import lại cùng Title.
+### 4.1. Nhập bằng AI
+
+1. Chọn đúng section đích và level.
+2. Nhập Title, chọn Audio và dán Transcript theo quy tắc mỗi dòng một câu.
+3. Bấm **Xử lý bằng AI**.
+4. Hệ thống tự tạo slug từ Title, ví dụ `First Snowfall` thành `first-snowfall`.
+
+AI chỉ map timestamp cho đúng các dòng transcript đã gửi lên. Phần giọng nói có trong audio nhưng không có trong transcript sẽ bị bỏ qua; kết quả nhận dạng không được dùng để viết lại transcript. Chỉ sau khi alignment thành công, hệ thống mới upload audio và tạo draft. Nếu request thất bại, các record và object R2 liên quan của request đó được rollback để có thể import lại cùng slug.
+
+### 4.2. Nhập không dùng AI bằng MP3 + SRT
+
+1. Chuẩn bị từng cặp file cùng basename, ví dụ `first-snowfall.mp3` và `first-snowfall.srt`.
+2. Chọn section đích và level một lần cho cả batch.
+3. Chọn nhiều file MP3/SRT trực tiếp, hoặc chọn một ZIP chứa các cặp file.
+4. Bấm **Kiểm tra và xem trước**; kiểm tra tên bài, slug, duration, số đoạn và lỗi từng item.
+5. Bấm **Xác nhận nhập** để xử lý các item hợp lệ. Một cặp cũng dùng đúng pipeline batch này.
+
+Item không hợp lệ hoặc thất bại không chặn item khác. Dùng **Tiếp tục nhập** sau khi luồng bị gián đoạn và **Thử lại bài lỗi** cho item thất bại; item đã hoàn tất không được tạo lại. SRT là nguồn transcript/timestamp chuẩn và chế độ này không gọi AI. Xem giới hạn file tại [NON_AI_IMPORT.md](./NON_AI_IMPORT.md).
+
+Migration `db/migrations/0008_batch_lesson_import.sql` phải được áp dụng trước khi dùng chế độ batch.
 
 ## 5. Review và publish
 
-Với từng câu sau khi Process:
+Luồng này áp dụng cho **Nhập bằng AI**. Với từng câu sau khi xử lý:
 
-1. Bấm phát để nghe đoạn tương ứng.
-2. Sửa text nếu cần.
+1. Bấm **Nghe đoạn** để nghe đúng khoảng thời gian tương ứng.
+2. Sửa text nếu cần; nội dung vẫn phải theo transcript chuẩn đã nhập.
 3. Sửa `start_ms` và `end_ms` nếu điểm cắt chưa đúng.
 4. Đảm bảo `start_ms >= 0`, `end_ms > start_ms`, không vượt thời lượng audio, đúng thứ tự và không chồng lấn.
-5. Bấm **Publish**.
+5. Bấm **Xuất bản**.
+
+Lesson Non-AI hợp lệ được publish trong quá trình xử lý batch sau bước xác nhận, vì timestamp và transcript đã được xác định trong SRT.
 
 Chỉ lesson đã publish mới xuất hiện trong:
 

@@ -1,13 +1,17 @@
 import { neon } from "@neondatabase/serverless";
-import { parsePreTimedSrt, validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
+import { unzipSync, zipSync } from "fflate";
+import { validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
+import { describeImportResource, NON_AI_IMPORT_LIMITS, pairImportResources, parseNonAiSrt } from "../src/lib/nonAiImport";
 import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle } from "../src/lib/slug";
 import { resolveObjectRange } from "../src/lib/httpRange";
 import { alignLessonImport } from "./listening-import";
 
 export interface ListeningSession { id: string; email: string; }
-const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
+const MAX_AUDIO_BYTES = NON_AI_IMPORT_LIMITS.maxAudioBytes;
 const MAX_JSON_BYTES = 128 * 1024;
+const MAX_BATCH_REQUEST_BYTES = NON_AI_IMPORT_LIMITS.maxArchiveBytes + 2 * 1024 * 1024;
+const BATCH_ITEM_STALE_SECONDS = 10 * 60;
 class RequestBodyError extends Error { constructor(message: string, readonly status: number) { super(message); } }
 const publicHeaders = { "Cache-Control": "public, max-age=60, stale-while-revalidate=300", "Content-Type": "application/json; charset=utf-8" };
 const json = (body: unknown, status = 200, cache = false) => Response.json(body, { status, headers: cache ? publicHeaders : { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" } });
@@ -34,6 +38,10 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "GET" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) ? getAdminLessons(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getAdminLesson(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "POST" && url.pathname === "/api/listening/admin/import") return isAdmin(env, session) && mutationValid ? importLesson(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "POST" && url.pathname === "/api/listening/admin/import-batches/validate") return isAdmin(env, session) && mutationValid ? validateImportBatch(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "GET" && /^\/api\/listening\/admin\/import-batches\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getImportBatch(env, session!, url) : json({ error: "forbidden" }, 403);
+  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/confirm$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? confirmImportBatch(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+\/review$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? reviewLesson(request, env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? deleteLesson(env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
@@ -240,12 +248,185 @@ async function getAdminLesson(env: Env, url: URL) {
   return json({ lesson: { ...rows[0], path: lessonPath(String(rows[0].level ?? "all"), String(rows[0].category_slug), String(rows[0].slug)), sentences } });
 }
 
+interface BatchSourceFile { name: string; file: File; }
+interface NormalizedBatchSource { files:BatchSourceFile[]; descriptors:ReturnType<typeof describeImportResource>[]; originalArchive?:File; }
+interface PreparedBatchItem {
+  id: string;
+  normalizedBasename: string;
+  lessonName: string;
+  slug: string | null;
+  audioName: string | null;
+  srtName: string | null;
+  durationMs: number | null;
+  segmentCount: number | null;
+  sortOrder: number;
+  status: "INVALID" | "QUEUED";
+  errors: string[];
+}
+
+async function validateImportBatch(request: Request, env: Env, session: ListeningSession) {
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (!Number.isFinite(contentLength) || contentLength <= 0) return json({ error: "content_length_required" }, 411);
+  if (contentLength > MAX_BATCH_REQUEST_BYTES) return json({ error: "batch_upload_too_large" }, 413);
+  let form: FormData;
+  try { form = await request.formData(); } catch { return json({ error: "invalid_multipart_form" }, 400); }
+  const sectionId = typeof form.get("sectionId") === "string" ? validId(String(form.get("sectionId"))) : null;
+  const inputMethod = form.get("inputMethod");
+  const level = typeof form.get("level") === "string" ? String(form.get("level")).trim() : "";
+  if (!sectionId || (inputMethod !== "files" && inputMethod !== "zip") || level.length > 30) return json({ error: "invalid_batch_metadata" }, 422);
+  const durations = parseDurationMap(form.get("durations"));
+  let source: NormalizedBatchSource;
+  try { source = inputMethod === "zip" ? await extractZipResources(form.get("archive")) : collectUploadedResources(form.getAll("files")); }
+  catch (error) { return json({ error: "invalid_import_resources", details: error instanceof Error ? error.message : "resource_read_failed" }, 422); }
+  if (!source.descriptors.length) return json({ error: "batch_resources_missing" }, 422);
+  if (source.descriptors.length > NON_AI_IMPORT_LIMITS.maxResources) return json({ error: "too_many_resources" }, 413);
+  const candidates = pairImportResources(source.descriptors);
+  if (candidates.filter((candidate) => candidate.slug).length > NON_AI_IMPORT_LIMITS.maxLessons) return json({ error: "too_many_lessons" }, 413);
+  const sql = sqlFor(env);
+  const sectionRows = await sql`SELECT s.id,s.title AS section_title,c.id AS category_id,c.slug AS category_slug,c.name AS category_name,l.code AS language_code,l.name AS language_name FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`;
+  const section = sectionRows[0]; if (!section) return json({ error: "invalid_section" }, 422);
+  const existingLessonRows = await sql`SELECT slug FROM listening_lessons WHERE section_id=${sectionId}`;
+  const existingPathRows = await sql`SELECT p.path FROM listening_canonical_paths p JOIN listening_lessons lesson ON lesson.id=p.lesson_id JOIN listening_sections s ON s.id=lesson.section_id WHERE s.category_id=${section.category_id}`;
+  const orderRows = await sql`SELECT COALESCE(MAX(sort_order),0)::int AS max_sort_order FROM listening_lessons WHERE section_id=${sectionId}`;
+  const existingSlugs = new Set(existingLessonRows.map((row) => String(row.slug)));
+  const existingPaths = new Set(existingPathRows.map((row) => String(row.path)));
+  const sourceFiles = new Map(source.files.map((entry) => [entry.name, entry.file]));
+  const batchId = crypto.randomUUID();
+  const prepared: PreparedBatchItem[] = [];
+  const initialSortOrder = Number(orderRows[0]?.max_sort_order ?? 0);
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = candidates[index], itemId = crypto.randomUUID(), errors = [...candidate.errors];
+    const audio = candidate.audioName ? sourceFiles.get(candidate.audioName) : undefined;
+    const srt = candidate.srtName ? sourceFiles.get(candidate.srtName) : undefined;
+    let durationMs = candidate.audioName ? durations.get(candidate.audioName) ?? null : null;
+    let segmentCount: number | null = null;
+    if (candidate.slug && existingSlugs.has(candidate.slug)) errors.push("duplicate_lesson_slug");
+    if (candidate.slug && existingPaths.has(lessonPath(level || "all", String(section.category_slug), candidate.slug))) errors.push("duplicate_canonical_path");
+    if (durationMs !== null && (!Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000)) { errors.push("invalid_audio_duration"); durationMs = null; }
+    if (audio && srt && !errors.length) {
+      try {
+        const srtText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(await srt.arrayBuffer());
+        const sentences = parseNonAiSrt(srtText, durationMs ?? undefined);
+        segmentCount = sentences.length;
+        durationMs ??= sentences.at(-1)!.endMs;
+      } catch (error) { errors.push(error instanceof Error ? error.message : "invalid_srt"); }
+    }
+    prepared.push({ id:itemId, normalizedBasename:`${candidate.key}:${index}`, lessonName:candidate.lessonName, slug:candidate.slug || null, audioName:candidate.audioName ?? null, srtName:candidate.srtName ?? null, durationMs, segmentCount, sortOrder:initialSortOrder + index + 1, status:errors.length ? "INVALID" : "QUEUED", errors:[...new Set(errors)] });
+  }
+  const sourceArchiveKey=prepared.some(item=>item.status==="QUEUED")?`listening/import-staging/${batchId}/resources.zip`:null;
+  try {
+    if(sourceArchiveKey){const archive=source.originalArchive??await createResourceArchive(source.files);await env.LISTENING_AUDIO.put(sourceArchiveKey,archive,{httpMetadata:{contentType:"application/zip",cacheControl:"no-store"}});}
+    const queries: TransactionQuery[] = [
+      sql`INSERT INTO listening_import_batches(id,created_by,section_id,input_method,source_archive_key,level,status) VALUES(${batchId},${session.id},${sectionId},${inputMethod},${sourceArchiveKey},${level||null},'VALIDATED')`,
+      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,original_audio_name,original_srt_name,audio_duration_ms,segment_count,sort_order,status,validation_errors) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.audioName},${item.srtName},${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb)`),
+    ];
+    await sql.transaction(queries);
+  } catch (error) {
+    if(sourceArchiveKey)await env.LISTENING_AUDIO.delete(sourceArchiveKey).catch(()=>undefined);
+    console.error(JSON.stringify({ event: "batch_import_validation_persistence_failed", batchId, message: error instanceof Error ? error.message : "unknown" }));
+    return json({ error: "batch_validation_failed" }, 500);
+  }
+  return getImportBatchById(env, session, batchId);
+}
+
+function collectUploadedResources(values: Array<string | File>): NormalizedBatchSource {
+  const files = values.filter((value): value is File => value instanceof File);
+  return { files: files.map((file) => ({ name:file.name, file })), descriptors: files.map((file) => describeImportResource(file.name, file.size)) };
+}
+
+async function extractZipResources(value: string | File | null): Promise<NormalizedBatchSource> {
+  if (!(value instanceof File) || !value.name.toLocaleLowerCase().endsWith(".zip") || value.size <= 0 || value.size > NON_AI_IMPORT_LIMITS.maxArchiveBytes) throw new Error("invalid_zip_file");
+  const descriptors: ReturnType<typeof describeImportResource>[] = [];
+  let extractedBytes = 0, resourceCount = 0;
+  const extracted = unzipSync(new Uint8Array(await value.arrayBuffer()), { filter: (entry) => {
+    if (entry.name.endsWith("/")) return false;
+    if (!isSafeArchivePath(entry.name)) throw new Error("unsafe_zip_path");
+    resourceCount += 1; extractedBytes += entry.originalSize;
+    if (resourceCount > NON_AI_IMPORT_LIMITS.maxResources) throw new Error("too_many_resources");
+    if (extractedBytes > NON_AI_IMPORT_LIMITS.maxExtractedBytes) throw new Error("zip_extracted_size_exceeded");
+    const descriptor = describeImportResource(entry.name, entry.originalSize); descriptors.push(descriptor);
+    return descriptor.kind !== "unsupported";
+  } });
+  const files = Object.entries(extracted).map(([name, bytes]) => ({ name, file:new File([bytes], name, { type:name.toLocaleLowerCase().endsWith(".mp3") ? "audio/mpeg" : "application/x-subrip" }) }));
+  return { files, descriptors, originalArchive:value };
+}
+
+async function createResourceArchive(files:BatchSourceFile[]):Promise<Uint8Array>{const entries:Record<string,Uint8Array>={};for(const entry of files){const descriptor=describeImportResource(entry.name,entry.file.size);if(descriptor.kind!=="unsupported")entries[entry.name]=new Uint8Array(await entry.file.arrayBuffer());}return zipSync(entries,{level:0});}
+
+function isSafeArchivePath(name: string): boolean {
+  if (!name || name.includes("\0") || name.startsWith("/") || name.startsWith("\\") || /^[a-z]:/iu.test(name)) return false;
+  return !name.replace(/\\/gu, "/").split("/").some((part) => part === "..");
+}
+
+function parseDurationMap(value: string | File | null): Map<string, number> {
+  if (typeof value !== "string" || value.length > 100_000) return new Map();
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return new Map();
+    return new Map(parsed.flatMap((item) => item && typeof item === "object" && typeof (item as {name?:unknown}).name === "string" && Number.isInteger((item as {durationMs?:unknown}).durationMs) ? [[(item as {name:string}).name, Number((item as {durationMs:number}).durationMs)] as const] : []));
+  } catch { return new Map(); }
+}
+
+async function getImportBatch(env: Env, session: ListeningSession, url: URL) {
+  const batchId = validId(url.pathname.slice("/api/listening/admin/import-batches/".length));
+  return batchId ? getImportBatchById(env, session, batchId) : json({ error:"invalid_batch" },422);
+}
+
+async function getImportBatchById(env: Env, session: ListeningSession, batchId: string) {
+  const sql = sqlFor(env);
+  const batches = await sql`SELECT b.id,b.input_method,b.level,b.status,b.confirmed_at,b.created_at,l.code AS language_code,l.name AS language_name,c.name AS category_name,s.title AS section_title,s.id AS section_id FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId} AND b.created_by=${session.id}`;
+  if (!batches.length) return json({ error:"not_found" },404);
+  const items = await sql`SELECT id,lesson_name AS "lessonName",slug,original_audio_name AS "audioName",original_srt_name AS "srtName",audio_duration_ms AS "durationMs",segment_count AS "segmentCount",status,validation_errors AS errors,error_message AS "errorMessage",lesson_id AS "lessonId",attempt_count AS "attemptCount",sort_order AS "sortOrder" FROM listening_import_batch_items WHERE batch_id=${batchId} ORDER BY sort_order,id`;
+  const counts = { total:items.length, valid:items.filter((item) => item.status !== "INVALID").length, invalid:items.filter((item) => item.status === "INVALID").length, queued:items.filter((item) => item.status === "QUEUED").length, processing:items.filter((item) => item.status === "PROCESSING").length, completed:items.filter((item) => item.status === "COMPLETED").length, failed:items.filter((item) => item.status === "FAILED").length };
+  return json({ batch:{ ...batches[0], items, counts } });
+}
+
+async function confirmImportBatch(env: Env, session: ListeningSession, url: URL) {
+  const batchId = validId(url.pathname.slice("/api/listening/admin/import-batches/".length).replace(/\/confirm$/u,"")); if (!batchId) return json({error:"invalid_batch"},422);
+  const sql = sqlFor(env);
+  const rows = await sql`UPDATE listening_import_batches b SET confirmed_at=COALESCE(confirmed_at,now()),status='PROCESSING',updated_at=now() WHERE b.id=${batchId} AND b.created_by=${session.id} AND b.status IN ('VALIDATED','PROCESSING','PARTIAL','FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','FAILED','PROCESSING')) RETURNING b.id`;
+  if (!rows.length) return json({error:"batch_not_confirmable"},409);
+  return getImportBatchById(env,session,batchId);
+}
+
+async function processImportBatchItem(env: Env, session: ListeningSession, url: URL) {
+  const match = url.pathname.match(/^\/api\/listening\/admin\/import-batches\/([\w-]+)\/items\/([\w-]+)\/process$/u); if (!match) return json({error:"invalid_batch_item"},422);
+  const [,batchId,itemId]=match,sql=sqlFor(env);
+  const completed = await sql`SELECT i.lesson_id FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.created_by=${session.id} AND i.status='COMPLETED'`;
+  if (completed.length) return getImportBatchById(env,session,batchId);
+  const claimed = await sql`UPDATE listening_import_batch_items i SET status='PROCESSING',attempt_count=attempt_count+1,error_message=NULL,updated_at=now() FROM listening_import_batches b WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.id=i.batch_id AND b.created_by=${session.id} AND b.confirmed_at IS NOT NULL AND (i.status IN ('QUEUED','FAILED') OR (i.status='PROCESSING' AND i.updated_at < now()-(${BATCH_ITEM_STALE_SECONDS} * interval '1 second'))) RETURNING i.*`;
+  const item=claimed[0]; if(!item)return json({error:"batch_item_not_processable"},409);
+  const batchRows=await sql`SELECT b.level,b.section_id,b.source_archive_key,c.slug AS category_slug,l.code AS language_code FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId}`;
+  const batch=batchRows[0]; if(!batch)return json({error:"not_found"},404);
+  try {
+    const archiveObject=await env.LISTENING_AUDIO.get(String(batch.source_archive_key));if(!archiveObject)throw new Error("staged_resource_missing");
+    const selected=extractSelectedResources(new Uint8Array(await archiveObject.arrayBuffer()),String(item.original_audio_name),String(item.original_srt_name));
+    const srtText=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(selected.srt);
+    const sentences=parseNonAiSrt(srtText,Number(item.audio_duration_ms));
+    const result=await persistImportedLesson(env,sql,session,{audio:new Blob([selected.audio],{type:"audio/mpeg"}),audioFileName:String(item.original_audio_name),transcript:sentences.map(sentence=>sentence.text).join("\n"),sectionId:String(batch.section_id),title:String(item.lesson_name),slug:String(item.slug),level:String(batch.level??""),durationMs:Number(item.audio_duration_ms),sentences,languageCode:String(batch.language_code),categorySlug:String(batch.category_slug),sortOrder:Number(item.sort_order),publish:true,batchItemId:itemId,source:"srt"});
+    await refreshBatchStatus(sql,batchId);
+    await cleanupFinishedBatchArchive(env,sql,batchId);
+    return json({ok:true,lessonId:result.lessonId,batch:(await batchPayload(env,session,batchId))});
+  } catch(error) {
+    const message=postgresErrorCode(error)==="23505"?"duplicate_lesson_slug":error instanceof Error?error.message:"unexpected_server_error";
+    await sql`UPDATE listening_import_batch_items SET status='FAILED',error_message=${message.slice(0,500)},updated_at=now() WHERE id=${itemId} AND status='PROCESSING'`;
+    await refreshBatchStatus(sql,batchId);
+    console.error(JSON.stringify({event:"batch_import_item_failed",batchId,itemId,message:message.slice(0,500)}));
+    return json({error:"batch_item_failed",details:message},422);
+  }
+}
+
+async function refreshBatchStatus(sql:TransactionSql,batchId:string){await sql`UPDATE listening_import_batches b SET status=CASE WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','PROCESSING')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='COMPLETED') THEN 'PARTIAL' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') THEN 'FAILED' ELSE 'COMPLETED' END,updated_at=now() WHERE b.id=${batchId}`;}
+function extractSelectedResources(archive:Uint8Array,audioName:string,srtName:string){const selected=unzipSync(archive,{filter:entry=>entry.name===audioName||entry.name===srtName});const audio=selected[audioName],srt=selected[srtName];if(!audio||!srt)throw new Error("staged_resource_missing");return {audio,srt};}
+async function cleanupFinishedBatchArchive(env:Env,sql:TransactionSql,batchId:string){const rows=await sql`SELECT source_archive_key FROM listening_import_batches b WHERE b.id=${batchId} AND b.source_archive_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','PROCESSING','FAILED'))`;const key=rows[0]?.source_archive_key;if(!key)return;try{await env.LISTENING_AUDIO.delete(String(key));await sql`UPDATE listening_import_batches SET source_archive_key=NULL,updated_at=now() WHERE id=${batchId}`;}catch(error){console.error(JSON.stringify({event:"batch_archive_cleanup_failed",batchId,message:error instanceof Error?error.message:"unknown"}));}}
+async function batchPayload(env:Env,session:ListeningSession,batchId:string){const response=await getImportBatchById(env,session,batchId);return (await response.json() as {batch:unknown}).batch;}
+
 async function importLesson(request: Request, env: Env, session: ListeningSession) {
   const length = Number(request.headers.get("content-length") ?? 0); if (!Number.isFinite(length) || length <= 0) return json({ error: "content_length_required" }, 411); if (length > MAX_AUDIO_BYTES + 256 * 1024) return json({ error: "upload_too_large" }, 413);
   let form: FormData;
   try { form = await request.formData(); }
   catch { return json({ error: "invalid_multipart_form" }, 400); }
-  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode") === "pre_timed" ? "pre_timed" : "ai", srt = form.get("srt") ?? form.get("timing");
+  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode");
   const durationMs = typeof durationRaw === "string" ? Number(durationRaw) : NaN;
   if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
   if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || typeof level !== "string" || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
@@ -255,30 +436,69 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   const duplicateRows = await sql`SELECT 1 FROM listening_canonical_paths WHERE path=${canonicalPath} LIMIT 1`; if (duplicateRows.length) return json({ error: "lesson_canonical_path_exists" }, 409);
   const languageCode = String(sectionRows[0].language_code), lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/${languageCode}/lessons/${lessonId}/audio.${extension}`;
   let sentences: AlignedSentence[];
-  if (typeof form.get("importMode") === "string" && form.get("importMode") !== "ai" && form.get("importMode") !== "pre_timed") return json({ error: "invalid_import_mode" }, 422);
-  try { sentences = importMode === "pre_timed" ? parsePreTimedSrt(typeof srt === "string" ? srt : "", transcript) : await alignLessonImport(env, audio, transcript, durationMs); if (importMode === "pre_timed") { const errors = validateAlignedSentences(sentences, durationMs); if (errors.length) throw new Error(errors.join(",")); } }
+  if (importMode !== "ai") return json({ error: "invalid_import_mode" }, 422);
+  try { sentences = await alignLessonImport(env, audio, transcript, durationMs); }
   catch (error) {
     console.error(JSON.stringify({ event: "listening_import_alignment_failed", jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
-    return importMode === "pre_timed" ? json({ error: "pre_timed_validation_failed", details: error instanceof Error ? error.message : "invalid_timing" }, 422) : alignmentErrorResponse(error);
+    return alignmentErrorResponse(error);
   }
   try {
-    await env.LISTENING_AUDIO.put(audioKey, audio, { httpMetadata: { contentType: audio.type, cacheControl: "public, max-age=86400" } });
-    const importQueries: TransactionQuery[] = [
-      sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'ALIGNING',${audioKey},${transcript.trim()})`,
-      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${sectionId},${slug},${title.trim()},${level||null},${audioKey},${durationMs},${sentences.length},${JSON.stringify({alignmentProvider:importMode === "pre_timed" ? "srt-script" : "workers-ai-whisper"})}::jsonb,999,false,${jobId})`,
-      sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
-      ...sentences.map(sentence => sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer(languageCode as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
-      sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='READY_FOR_REVIEW',updated_at=now() WHERE id=${jobId}`,
-      sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`,
-    ];
-    await sql.transaction(importQueries);
+    const result=await persistImportedLesson(env,sql,session,{audio,audioFileName:audio.name,transcript:transcript.trim(),sectionId,title:title.trim(),slug,level,durationMs,sentences,languageCode,categorySlug:String(sectionRows[0].category_slug),sortOrder:999,publish:false,source:"ai",lessonId,jobId,audioKey,canonicalPath});
     const reviewRows = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
-    return json({ jobId, lessonId, status: "READY_FOR_REVIEW", sentences: reviewRows });
+    return json({ jobId:result.jobId, lessonId:result.lessonId, status: "READY_FOR_REVIEW", sentences: reviewRows });
   } catch (error) {
     console.error(JSON.stringify({ event: "listening_import_persistence_failed", lessonId, jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
-    const cleanupComplete = await cleanupFailedImport(env, sql, { lessonId, jobId, audioKey });
-    if (!cleanupComplete) return json({ error: "import_cleanup_failed", requestId: jobId }, 500);
+    if (error instanceof ImportPersistenceError && !error.cleanupComplete) return json({ error: "import_cleanup_failed", requestId: jobId }, 500);
     return postgresErrorCode(error) === "23505" ? json({ error: "lesson_canonical_path_exists" }, 409) : json({ error: "import_failed" }, 500);
+  }
+}
+
+interface PersistImportedLessonInput {
+  audio: Blob;
+  audioFileName: string;
+  transcript: string;
+  sectionId: string;
+  title: string;
+  slug: string;
+  level: string;
+  durationMs: number;
+  sentences: AlignedSentence[];
+  languageCode: string;
+  categorySlug: string;
+  sortOrder: number;
+  publish: boolean;
+  source: "ai" | "srt";
+  batchItemId?: string;
+  lessonId?: string;
+  jobId?: string;
+  audioKey?: string;
+  canonicalPath?: string;
+}
+
+class ImportPersistenceError extends Error { constructor(message:string,readonly cleanupComplete:boolean,readonly causeValue:unknown){super(message);} }
+
+async function persistImportedLesson(env:Env,sql:TransactionSql,session:ListeningSession,input:PersistImportedLessonInput){
+  const lessonId=input.lessonId??crypto.randomUUID(),jobId=input.jobId??crypto.randomUUID();
+  const extension=input.audioFileName.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu,"")||"mp3";
+  const audioKey=input.audioKey??`listening/${input.languageCode}/lessons/${lessonId}/audio.${extension}`;
+  const canonicalPath=input.canonicalPath??lessonPath(input.level||"all",input.categorySlug,input.slug);
+  try{
+    await env.LISTENING_AUDIO.put(audioKey,input.audio,{httpMetadata:{contentType:input.audio.type||"audio/mpeg",cacheControl:"public, max-age=86400"}});
+    const finalJobStatus=input.publish?"PUBLISHED":"READY_FOR_REVIEW";
+    const importQueries:TransactionQuery[]=[
+      sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'VALIDATING',${audioKey},${input.transcript})`,
+      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${input.sectionId},${input.slug},${input.title},${input.level||null},${audioKey},${input.durationMs},${input.sentences.length},${JSON.stringify({alignmentProvider:input.source==="ai"?"workers-ai-whisper":"standard-srt",importMode:input.source})}::jsonb,${input.sortOrder},${input.publish},${jobId})`,
+      sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
+      ...input.sentences.map(sentence=>sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer(input.languageCode as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
+      sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status=${finalJobStatus},updated_at=now() WHERE id=${jobId}`,
+    ];
+    if(input.batchItemId)importQueries.push(sql`UPDATE listening_import_batch_items SET status='COMPLETED',lesson_id=${lessonId},error_message=NULL,updated_at=now() WHERE id=${input.batchItemId} AND status='PROCESSING'`);
+    importQueries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
+    await sql.transaction(importQueries);
+    return {lessonId,jobId,audioKey,canonicalPath};
+  }catch(error){
+    const cleanupComplete=await cleanupFailedImport(env,sql,{lessonId,jobId,audioKey});
+    throw new ImportPersistenceError(error instanceof Error?error.message:"import_failed",cleanupComplete,error);
   }
 }
 
@@ -411,6 +631,7 @@ async function cleanupFailedImport(env: Env, sql: ReturnType<typeof sqlFor>, res
 }
 
 function postgresErrorCode(error: unknown): string | null {
+  if (error instanceof ImportPersistenceError) return postgresErrorCode(error.causeValue);
   if (!error || typeof error !== "object" || !("code" in error)) return null;
   return typeof error.code === "string" ? error.code : null;
 }

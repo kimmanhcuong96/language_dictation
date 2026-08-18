@@ -29,6 +29,37 @@ export interface LeaderboardEntry {
   points: number;
 }
 
+export interface AdminImportBatchItem {
+  id: string;
+  lessonName: string;
+  slug: string | null;
+  audioName: string | null;
+  srtName: string | null;
+  durationMs: number | null;
+  segmentCount: number | null;
+  status: "INVALID" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+  errors: string[];
+  errorMessage: string | null;
+  lessonId: string | null;
+  attemptCount: number;
+  sortOrder: number;
+}
+
+export interface AdminImportBatch {
+  id: string;
+  input_method: "files" | "zip";
+  level: string | null;
+  status: "VALIDATED" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED";
+  confirmed_at: string | null;
+  language_code: string;
+  language_name: string;
+  category_name: string;
+  section_title: string;
+  section_id: string;
+  items: AdminImportBatchItem[];
+  counts: { total:number; valid:number; invalid:number; queued:number; processing:number; completed:number; failed:number };
+}
+
 interface AuthContextValue {
   user: AccountUser | null;
   loading: boolean;
@@ -41,6 +72,10 @@ interface AuthContextValue {
   leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
   saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
+  adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
+  adminGetImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
+  adminConfirmImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
+  adminProcessImportBatchItem: (batchId: string, itemId: string) => Promise<{ batch: AdminImportBatch }>;
   adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminUpdateLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminDeleteLesson: (lessonId: string) => Promise<void>;
@@ -52,8 +87,8 @@ const LEGACY_OUTBOX_KEY = "echotype-activity-outbox-v1";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
-  const body = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? `request_failed_${response.status}`);
+  const body = await response.json() as T & { error?: string; details?: string };
+  if (!response.ok) throw new Error(body.details ? `${body.error ?? "request_failed"}: ${body.details}` : body.error ?? `request_failed_${response.status}`);
   return body;
 }
 
@@ -168,6 +203,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminImportLesson: async (form) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       return api("/api/listening/admin/import", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
+    },
+    adminValidateImportBatch: async (form) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api("/api/listening/admin/import-batches/validate", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
+    },
+    adminGetImportBatch: async (batchId) => {
+      if (!user?.isAdmin) throw new Error("forbidden");
+      return api(`/api/listening/admin/import-batches/${encodeURIComponent(batchId)}`);
+    },
+    adminConfirmImportBatch: async (batchId) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api(`/api/listening/admin/import-batches/${encodeURIComponent(batchId)}/confirm`, { method:"POST", headers:{ "X-CSRF-Token":csrf } });
+    },
+    adminProcessImportBatchItem: async (batchId,itemId) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api(`/api/listening/admin/import-batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/process`, { method:"POST", headers:{ "X-CSRF-Token":csrf } });
     },
     adminReviewLesson: async (lessonId, input) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");

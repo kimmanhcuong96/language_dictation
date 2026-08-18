@@ -1,22 +1,16 @@
-# Pre-timed Import bằng SRT
+# Import bằng SRT chuẩn
 
-Pre-timed Import sử dụng SRT làm định dạng timing chuẩn và không gọi AI.
+SRT hiện được dùng trong chế độ **Nhập không dùng AI** tại `#/admin/listening`. Luồng dán SRT hoặc nhập riêng từng lesson đã được thay bằng một batch pipeline duy nhất.
 
-Có thể nhập theo hai cách trong `#/admin/listening`:
+Mỗi lesson cần đúng một cặp cùng basename:
 
-- Dán nội dung SRT vào ô **Pre-timed SRT**.
-- Chọn file `.srt`; nếu chọn file, nội dung file được ưu tiên hơn nội dung đã dán.
-
-Ví dụ:
-
-```srt
-1
-00:00:00,000 --> 00:00:01,200
-First sentence.
-
-2
-00:00:01,200 --> 00:00:02,500
-Second sentence.
+```text
+first-snowfall.mp3
+first-snowfall.srt
 ```
 
-Số thứ tự phải liên tục từ `1`, timecode dùng dạng `HH:MM:SS,mmm` hoặc dấu chấm thay cho dấu phẩy, và mỗi cue phải có text. Số cue phải đúng với số dòng transcript không rỗng; text trong SRT cũng phải khớp dòng transcript tương ứng. Hệ thống tiếp tục kiểm tra overlap, thứ tự timestamp và giới hạn theo thời lượng audio trước khi lưu lesson.
+Có thể chọn trực tiếp một hoặc nhiều cặp MP3/SRT, hoặc upload một ZIP chứa các cặp đó. Một cặp vẫn được xử lý như batch có một item. Tên lesson lấy từ basename và slug được tạo tự động; không nhập title, slug hoặc metadata riêng trong SRT.
+
+SRT phải có cue đánh số liên tục từ `1`, timecode chuẩn `HH:MM:SS,mmm`, nội dung không rỗng, thời gian tăng dần, không chồng lấn và không vượt thời lượng audio. Hệ thống kiểm tra toàn bộ batch và hiển thị preview trước khi Admin xác nhận.
+
+Chi tiết kỹ thuật và giới hạn nằm trong [LESSON_IMPORT_SPEC.md](./LESSON_IMPORT_SPEC.md); hướng dẫn vận hành nằm trong [NON_AI_IMPORT.md](./NON_AI_IMPORT.md).

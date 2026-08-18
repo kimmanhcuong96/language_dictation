@@ -1310,6 +1310,15 @@ Persistence
 
 Do not put the entire importer inside an HTTP route handler.
 
+The implemented Admin UI exposes two independent adapters:
+
+```text
+AI Import: audio + canonical transcript → alignment → draft review → publish
+Non-AI Import: MP3/SRT files or ZIP → unified batch validation → preview → confirm
+```
+
+Non-AI direct files and ZIP inputs must use one batch pipeline for both a single lesson and multiple lessons. The common MP3/SRT basename supplies the title, the normal slug service supplies the slug, and standard SRT supplies canonical text and timestamps. Invalid items must not block valid items; resume/retry must skip completed items. See `LESSON_IMPORT_SPEC.md` for the current operational contract.
+
 ---
 
 ## 44. Audio Alignment
@@ -1734,6 +1743,8 @@ Coming soon
 ```
 
 must use the existing i18n system.
+
+This includes Admin import mode controls, validation summaries, progress counters, per-item statuses, actions, and known API error codes. Content values such as lesson titles, section names, filenames, slugs, and transcripts must remain unchanged.
 
 Do not use i18n to translate lesson transcripts.
 

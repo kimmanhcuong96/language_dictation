@@ -105,7 +105,7 @@ function App() {
   ) : view.page === "canonicalLesson" ? (
     <EnglishLearningApp canonicalPath={view.path} locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
   ) : view.page === "admin" ? (
-    <AdminListeningPage onHome={() => navigate({page:"home"})}/>
+    <AdminListeningPage locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminManagement" ? (
     <LessonManagementPage onHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (

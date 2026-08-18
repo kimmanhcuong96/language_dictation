@@ -11,10 +11,19 @@ The listening library stores metadata and sentence timestamps in Neon and keeps 
 
 ## Import and publish
 
-1. Sign in with an email listed in `ADMIN_EMAILS` and open `#/admin/listening` from the account menu.
-2. Select the English section, enter lesson metadata, choose an MP3/WAV/M4A/OGG/WebM audio file, and paste the canonical transcript with one sentence per line.
-3. Choose **Process**. The Worker first uses Workers AI transcription only to align timestamps. After alignment succeeds, it uploads the original file and creates the import job, lesson, and sentences atomically as an unpublished draft. The supplied transcript remains unchanged and authoritative.
-4. Play each generated segment and correct its text or `start_ms`/`end_ms` values. Timestamps must be ordered, non-overlapping, positive, and within the lesson duration.
-5. Choose **Publish**. Only published lessons appear in public APIs and the English library.
+Sign in with an email listed in `ADMIN_EMAILS` and open `#/admin/listening`. The page has two separate modes and localizes its UI/status/error messages from the selected interface locale; imported learning content is never translated.
 
-Imports are limited to 20 MB, 1 hour, 1,000 sentences, and 50,000 transcript characters. Alignment failures create no database or R2 resources. If upload, database persistence, or the final response query fails, the Worker removes the lesson/sentence/import-job records, deletes the R2 object, and verifies that cleanup completed so the generated slug can be retried cleanly.
+### AI Import
+
+1. Select the target section and level, enter the title, choose an audio file, and paste the canonical transcript with one sentence per line.
+2. Choose **Process with AI**. Workers AI is used only to map timestamps to the submitted lines. Speech present in the audio but absent from the transcript is ignored, and recognized speech never replaces the Admin's text.
+3. Play each generated segment and correct its text or `start_ms`/`end_ms` values.
+4. Choose **Publish**. The draft is public only after this explicit review step.
+
+AI imports are limited to 20 MB, 1 hour, 1,000 sentences, and 50,000 transcript characters. Alignment failures create no database or R2 resources. Persistence failures remove the lesson, sentence, import-job, and audio resources so the generated slug can be retried.
+
+### Non-AI Import
+
+Choose one or more matching `<lesson-name>.mp3`/`<lesson-name>.srt` pairs, or one ZIP containing such pairs. Direct files and ZIPs normalize into the same batch pipeline, including a batch of one. Validate the whole input, inspect the per-item preview, then explicitly confirm the valid lessons. Valid items publish independently; invalid/failed items remain visible and do not stop the batch. Resume and retry skip completed items.
+
+Apply `db/migrations/0008_batch_lesson_import.sql` before deploying this mode. The full contract is in [LESSON_IMPORT_SPEC.md](./LESSON_IMPORT_SPEC.md), with operating steps in [NON_AI_IMPORT.md](./NON_AI_IMPORT.md).

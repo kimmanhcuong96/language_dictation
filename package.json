@@ -15,23 +15,24 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@neondatabase/serverless": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
+    "fflate": "^0.8.3",
+    "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "lucide-react": "latest",
-    "@neondatabase/serverless": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
-    "jsdom": "latest",
-    "vitest": "latest",
-    "wrangler": "latest",
     "@types/node": "latest",
-    "postgres": "latest"
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "jsdom": "latest",
+    "postgres": "latest",
+    "vitest": "latest",
+    "wrangler": "latest"
   }
 }

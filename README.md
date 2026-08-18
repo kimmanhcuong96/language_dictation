@@ -101,7 +101,7 @@ R2 phù hợp với audio public vì có free tier và không tính phí egress 
 
 ## Listening content
 
-Nội dung English mới được đọc từ Neon, dùng một file audio gốc trên R2 và các mốc câu trong database. Xem [LISTENING_CONTENT.md](./LISTENING_CONTENT.md) để cấu hình bucket, migration, quyền admin, import/căn chỉnh và publish bài học.
+Nội dung English mới được đọc từ Neon, dùng một file audio gốc trên R2 và các mốc câu trong database. Xem [LISTENING_CONTENT.md](./LISTENING_CONTENT.md) để cấu hình bucket, migration, quyền admin và publish; hợp đồng hai chế độ import nằm trong [LESSON_IMPORT_SPEC.md](./LESSON_IMPORT_SPEC.md).
 
 Hướng dẫn thao tác dành cho người quản lý nội dung: [USER_GUIDE.md](./USER_GUIDE.md).
 
