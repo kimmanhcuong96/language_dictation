@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { adminSystemT } from "./adminSystemI18n";
 import { AudioSegmentPlayer, type AudioSegmentPlayerHandle } from "./components/AudioSegmentPlayer";
 import { ListeningSettingsDialog } from "./components/ListeningSettingsDialog";
+import { LessonTranslationPanel } from "./components/LessonTranslationPanel";
 import { AdminLayout } from "./components/admin/AdminLayout";
 import { LessonImportPage } from "./components/admin/LessonImportPage";
 import { translate } from "./i18n";
@@ -134,7 +135,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,locale,onHome}:{manifes
               </>:<button type="button" className="primary-button" onClick={next}>{translate(locale,"next")}<ArrowRight size={16}/></button>}</div>
             </div>
           </div>
-          {accepted&&<aside className="answer-insight" aria-live="polite"><section><span className={revealed?"revealed":"correct"}>{revealed?lessonT(locale,"revealedAnswer"):lessonT(locale,"correctAnswer")}</span><p>{sentence.transcript}</p></section><section><h2>{lessonT(locale,"pronunciation")}</h2><div className="pronunciation-words">{sentence.transcript.split(/\s+/u).map((word,wordIndex)=><span key={`${word}-${wordIndex}`}>{word}</span>)}</div><small>{lessonT(locale,"pronunciationHint")}</small></section></aside>}
+          <aside className="answer-insight" aria-live="polite" hidden={!accepted}>{accepted&&<><section><span className={revealed?"revealed":"correct"}>{revealed?lessonT(locale,"revealedAnswer"):lessonT(locale,"correctAnswer")}</span><p>{sentence.transcript}</p></section><section><h2>{lessonT(locale,"pronunciation")}</h2><div className="pronunciation-words">{sentence.transcript.split(/\s+/u).map((word,wordIndex)=><span key={`${word}-${wordIndex}`}>{word}</span>)}</div><small>{lessonT(locale,"pronunciationHint")}</small></section></>}<LessonTranslationPanel lessonId={lesson.id} sentenceId={sentence.id} locale={locale}/></aside>
         </div>
       </section>}
       <aside className="lesson-tip"><Lightbulb size={19}/><div><b>{lessonT(locale,"listeningTip")}</b><p>{lessonT(locale,"listeningTipText")}</p></div></aside>

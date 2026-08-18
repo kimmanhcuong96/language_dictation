@@ -70,6 +70,18 @@ Email đăng nhập Google phải khớp danh sách này. Không commit `DATABAS
 
 Project đã bật `keep_vars: true` và không khai báo `ADMIN_EMAILS` trong `wrangler.jsonc`, nên giá trị `ADMIN_EMAILS` trên Cloudflare Dashboard sẽ được giữ lại khi deploy. Nếu lần deploy trước đã ghi đè thành rỗng, hãy nhập lại giá trị một lần trong Dashboard trước khi deploy phiên bản mới.
 
+### Google Cloud Translation
+
+Ứng dụng dùng Cloud Translation Basic v2 để tạo bản dịch đề xuất cho `vi`, `zh-CN` và `ja`. Tạo API key trong Google Cloud project đã bật Cloud Translation API, giới hạn key cho API này, rồi lưu dưới dạng Worker secret/environment:
+
+```text
+GOOGLE_TRANSLATE_API_KEY=your-google-cloud-translation-api-key
+```
+
+Không khai báo key trong `wrangler.jsonc`, source code hoặc frontend. `keep_vars: true` giúp giá trị đặt trên Dashboard không bị ghi đè khi deploy. Nếu chưa cấu hình key, import lesson vẫn thành công; translation set chuyển thành `NOT_CONFIGURED` để admin retry sau.
+
+Sau khi import/publish, Worker tạo candidate cho ba ngôn ngữ mặc định ở background. Candidate không xuất hiện công khai cho đến khi admin duyệt.
+
 Sau khi đổi binding/config:
 
 ```powershell
@@ -173,3 +185,22 @@ Phím nghe lại mặc định là **Ctrl**. Các lựa chọn gồm Ctrl, Shift
 Phím phát/tạm dừng luôn là backtick `` ` ``.
 
 Nếu đã đăng nhập, cài đặt được lưu riêng trên tài khoản và dùng lại trên các thiết bị khác. Nếu chưa đăng nhập, cài đặt chỉ được lưu cho profile khách trên trình duyệt hiện tại.
+
+## 10. Quản lý bản dịch lesson
+
+Sau khi lesson được publish, hệ thống tự tạo candidate bằng Google cho tiếng Việt (`vi`), tiếng Trung giản thể (`zh-CN`) và tiếng Nhật (`ja`). Đây chỉ là bản chờ duyệt, chưa hiển thị công khai.
+
+Để kiểm duyệt:
+
+1. Mở dashboard `#/admin`.
+2. Chọn **Kiểm duyệt bản dịch**.
+3. So sánh câu gốc và bản dịch.
+4. Chọn **Duyệt** hoặc **Từ chối** cho từng câu.
+5. Chọn **Duyệt toàn bộ lesson** khi tất cả câu đã có candidate hợp lệ.
+6. Nếu Google lỗi hoặc trước đó chưa có API key, chọn **Tạo / thử lại Google**.
+
+Khi duyệt một candidate mới, bản đã duyệt trước đó được lưu vào lịch sử với trạng thái `SUPERSEDED`; hệ thống không xóa lịch sử. Khi transcript gốc bị sửa, các bản dịch liên quan cũng chuyển thành `SUPERSEDED` và ba bản dịch mặc định được tạo lại.
+
+Nút **Duyệt toàn bộ lesson** chỉ được bật khi có ít nhất một câu có bản dịch; mọi sentence đều có bản dịch đang chờ duyệt hoặc đã duyệt, không còn sentence bị từ chối hay thiếu; lesson đang được xuất bản và ngôn ngữ đích có trạng thái `ACTIVE`. Khi nút bị khóa, di chuột lên nút để xem nguyên nhân.
+
+Người học có thể chọn ngôn ngữ dịch trong lesson và đề xuất bản dịch từng câu. Khi chọn **Thêm ngôn ngữ khác**, hệ thống hiển thị danh mục 30 ngôn ngữ phổ biến với tên bản địa và tên tiếng Anh; người dùng không được tự nhập mã hoặc tên ngôn ngữ. Các ngôn ngữ đã tồn tại vẫn hiển thị nhưng bị vô hiệu hóa và có nhãn **Đã thêm**. Ngôn ngữ mới và contribution chỉ hiển thị cho người gửi/admin cho đến khi admin duyệt. Không duyệt toàn lesson nếu còn câu thiếu bản dịch.

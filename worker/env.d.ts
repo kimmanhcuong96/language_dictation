@@ -5,4 +5,5 @@ interface Env {
   CLOUDFLARE_ACCOUNT_ID: string;
   CLOUDFLARE_AI_TOKEN: string;
   CLOUDFLARE_AI_MODEL: string;
+  GOOGLE_TRANSLATE_API_KEY: string;
 }

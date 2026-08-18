@@ -48,7 +48,10 @@ Backend là Cloudflare Worker trong `worker/index.ts`; frontend và API chạy c
 
    ```bash
    npx wrangler secret put GOOGLE_CLIENT_SECRET
+   npx wrangler secret put GOOGLE_TRANSLATE_API_KEY
    ```
+
+   `GOOGLE_TRANSLATE_API_KEY` dùng Cloud Translation Basic v2 để tạo candidate tiếng Việt, Trung giản thể và Nhật. Không khai báo API key trong `wrangler.jsonc` hoặc frontend.
 
 5. Chạy migration và deploy:
 

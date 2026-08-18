@@ -7,6 +7,7 @@ import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle } from "../src/lib/slug";
 import { resolveObjectRange } from "../src/lib/httpRange";
 import { alignLessonImport } from "./listening-import";
+import { routeListeningTranslations, scheduleAutomaticTranslations } from "./listening-translations";
 
 export interface ListeningSession { id: string; email: string; }
 const MAX_AUDIO_BYTES = NON_AI_IMPORT_LIMITS.maxAudioBytes;
@@ -25,7 +26,8 @@ const sqlFor = (env: Env) => neon(env.DATABASE_URL) as TransactionSql;
 const validId = (value: string | null, max = 100) => value && new RegExp(`^[\\w-]{1,${max}}$`, "u").test(value) ? value : null;
 const isAdmin = (env: Env, session: ListeningSession | null) => !!session && env.ADMIN_EMAILS.split(",").map((item) => item.trim().toLocaleLowerCase()).filter(Boolean).includes(session.email.toLocaleLowerCase());
 
-export async function routeListening(request: Request, env: Env, url: URL, session: ListeningSession | null, mutationValid: boolean): Promise<Response> {
+export async function routeListening(request: Request, env: Env, url: URL, session: ListeningSession | null, mutationValid: boolean, ctx:ExecutionContext): Promise<Response> {
+  const translationResponse=await routeListeningTranslations(request,env,url,session,isAdmin(env,session),mutationValid,ctx);if(translationResponse)return translationResponse;
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith("/api/listening/audio/")) return serveAudio(request, env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/categories") return getCategories(env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/sections") return getSections(env, url);
@@ -42,9 +44,9 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "POST" && url.pathname === "/api/listening/admin/import-batches/validate") return isAdmin(env, session) && mutationValid ? validateImportBatch(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && /^\/api\/listening\/admin\/import-batches\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getImportBatch(env, session!, url) : json({ error: "forbidden" }, 403);
   if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/confirm$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? confirmImportBatch(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+\/review$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? reviewLesson(request, env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url,ctx) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+\/review$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? reviewLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? deleteLesson(env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   return json({ error: "not_found" }, 404);
 }
@@ -390,7 +392,7 @@ async function confirmImportBatch(env: Env, session: ListeningSession, url: URL)
   return getImportBatchById(env,session,batchId);
 }
 
-async function processImportBatchItem(env: Env, session: ListeningSession, url: URL) {
+async function processImportBatchItem(env: Env, session: ListeningSession, url: URL,ctx:ExecutionContext) {
   const match = url.pathname.match(/^\/api\/listening\/admin\/import-batches\/([\w-]+)\/items\/([\w-]+)\/process$/u); if (!match) return json({error:"invalid_batch_item"},422);
   const [,batchId,itemId]=match,sql=sqlFor(env);
   const completed = await sql`SELECT i.lesson_id FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.created_by=${session.id} AND i.status='COMPLETED'`;
@@ -405,6 +407,7 @@ async function processImportBatchItem(env: Env, session: ListeningSession, url: 
     const srtText=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(selected.srt);
     const sentences=parseNonAiSrt(srtText,Number(item.audio_duration_ms));
     const result=await persistImportedLesson(env,sql,session,{audio:new Blob([selected.audio],{type:"audio/mpeg"}),audioFileName:String(item.original_audio_name),transcript:sentences.map(sentence=>sentence.text).join("\n"),sectionId:String(batch.section_id),title:String(item.lesson_name),slug:String(item.slug),level:String(batch.level??""),durationMs:Number(item.audio_duration_ms),sentences,languageCode:String(batch.language_code),categorySlug:String(batch.category_slug),sortOrder:Number(item.sort_order),publish:true,batchItemId:itemId,source:"srt"});
+    await scheduleTranslationsAfterContentChange(env,ctx,result.lessonId,session.id);
     await refreshBatchStatus(sql,batchId);
     await cleanupFinishedBatchArchive(env,sql,batchId);
     return json({ok:true,lessonId:result.lessonId,batch:(await batchPayload(env,session,batchId))});
@@ -504,7 +507,7 @@ async function persistImportedLesson(env:Env,sql:TransactionSql,session:Listenin
   }
 }
 
-async function reviewLesson(request: Request, env: Env, url: URL) {
+async function reviewLesson(request: Request, env: Env, url: URL,ctx:ExecutionContext,session:ListeningSession) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length).replace(/\/review$/u, "")); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
   let body: Record<string, unknown>;
   try { body = await boundedJson<Record<string, unknown>>(request); }
@@ -523,10 +526,11 @@ async function reviewLesson(request: Request, env: Env, url: URL) {
   if (body.publish) reviewQueries.push(sql`UPDATE listening_import_jobs SET status='PUBLISHED',updated_at=now() WHERE id=${lessonRows[0].import_job_id}`);
   reviewQueries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
   await sql.transaction(reviewQueries);
+  if(body.publish)await scheduleTranslationsAfterContentChange(env,ctx,lessonId,session.id);
   return json({ ok: true, published: body.publish });
 }
 
-async function updateLesson(request: Request, env: Env, url: URL) {
+async function updateLesson(request: Request, env: Env, url: URL,ctx:ExecutionContext,session:ListeningSession) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length)); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
   let body: Record<string, unknown>;
   try { body = await boundedJson<Record<string, unknown>>(request); }
@@ -543,13 +547,13 @@ async function updateLesson(request: Request, env: Env, url: URL) {
   const sectionRows = await sql`SELECT s.id,c.slug AS category_slug,lang.code AS language_code FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE s.id=${targetSection} AND lang.is_enabled=true`;
   if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
   const rawSentences = body.sentences;
-  let sentences: Array<{ id: string; position: number; text: string; startMs: number; endMs: number }> | null = null;
+  let sentences: Array<{ id: string; position: number; text: string; startMs: number; endMs: number }> | null = null,changedSentenceIds:string[]=[];
   if (rawSentences !== undefined) {
     if (!Array.isArray(rawSentences) || !rawSentences.length || rawSentences.length > 1000) return json({ error: "invalid_sentences" }, 422);
     sentences = [];
     for (const raw of rawSentences) { if (!raw || typeof raw !== "object") return json({ error: "invalid_sentences" }, 422); const item = raw as Record<string, unknown>; if (typeof item.id !== "string" || !validId(item.id) || typeof item.text !== "string" || !item.text.trim() || !Number.isInteger(item.position) || !Number.isInteger(item.startMs) || !Number.isInteger(item.endMs)) return json({ error: "invalid_sentences" }, 422); sentences.push({ id: item.id, position: Number(item.position), text: item.text.trim(), startMs: Number(item.startMs), endMs: Number(item.endMs) }); }
     const errors = validateAlignedSentences(sentences, Number(current.duration_ms)); if (errors.length) return json({ error: "validation_failed", details: errors }, 422);
-    const existingRows = await sql`SELECT id FROM listening_sentences WHERE lesson_id=${lessonId}`; const existingIds = new Set(existingRows.map((row) => String(row.id))); if (existingIds.size !== sentences.length || sentences.some((sentence) => !existingIds.has(sentence.id))) return json({ error: "sentence_set_mismatch" }, 422);
+    const existingRows = await sql`SELECT id,transcript FROM listening_sentences WHERE lesson_id=${lessonId}`; const existingIds = new Set(existingRows.map((row) => String(row.id))); if (existingIds.size !== sentences.length || sentences.some((sentence) => !existingIds.has(sentence.id))) return json({ error: "sentence_set_mismatch" }, 422);const currentText=new Map(existingRows.map(row=>[String(row.id),String(row.transcript)]));changedSentenceIds=sentences.filter(sentence=>currentText.get(sentence.id)!==sentence.text).map(sentence=>sentence.id);
   }
   const oldPath = lessonPath(String(current.level ?? "all"), String(current.category_slug), String(current.slug));
   const newPath = lessonPath(level ?? String(current.level ?? "all"), String(sectionRows[0].category_slug), slug);
@@ -560,8 +564,10 @@ async function updateLesson(request: Request, env: Env, url: URL) {
   queries.push(sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${newPath},${lessonId}) ON CONFLICT(lesson_id) DO UPDATE SET path=EXCLUDED.path,updated_at=now()`);
   const normalizerLanguage = String(sectionRows[0].language_code ?? "en") as "en"|"zh"|"ja";
   if (sentences) for (const sentence of sentences) queries.push(sql`UPDATE listening_sentences SET position=${sentence.position},transcript=${sentence.text},normalized_transcript=${getNormalizer(normalizerLanguage).normalize(sentence.text)},start_ms=${sentence.startMs},end_ms=${sentence.endMs},updated_at=now() WHERE id=${sentence.id} AND lesson_id=${lessonId}`);
+  if(changedSentenceIds.length){const staleRows=await sql`SELECT tr.id,tr.sentence_id,tr.language_code FROM listening_sentence_translation_versions tr WHERE tr.sentence_id=ANY(${changedSentenceIds}) AND tr.status IN ('APPROVED','PENDING')`;for(const row of staleRows){queries.push(sql`UPDATE listening_sentence_translation_versions SET status='SUPERSEDED',updated_at=now() WHERE id=${String(row.id)}`);queries.push(sql`INSERT INTO listening_translation_audit_log(id,translation_id,lesson_id,sentence_id,language_code,action,actor_id,details) VALUES(${crypto.randomUUID()},${String(row.id)},${lessonId},${String(row.sentence_id)},${String(row.language_code)},'SUPERSEDED',${session.id},${JSON.stringify({reason:"source_changed"})}::jsonb)`);}queries.push(sql`UPDATE listening_lesson_translation_sets SET status='DRAFT',machine_status=CASE WHEN language_code IN(SELECT code FROM listening_translation_languages WHERE machine_translation_enabled=true) THEN 'PENDING' ELSE machine_status END,updated_at=now() WHERE lesson_id=${lessonId}`);}
   queries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
   try { await sql.transaction(queries); } catch (error) { return postgresErrorCode(error) === "23505" ? json({ error: "lesson_canonical_path_exists" }, 409) : json({ error: "lesson_update_failed" }, 500); }
+  if(changedSentenceIds.length)await scheduleTranslationsAfterContentChange(env,ctx,lessonId,session.id);
   return json({ ok: true, path: newPath });
 }
 
@@ -594,6 +600,11 @@ async function deleteLesson(env: Env, url: URL) {
     return json({ error: "lesson_delete_failed" }, 500);
   }
   return json({ ok: true });
+}
+
+async function scheduleTranslationsAfterContentChange(env:Env,ctx:ExecutionContext,lessonId:string,requestedBy:string){
+  try{await scheduleAutomaticTranslations(env,ctx,lessonId,undefined,requestedBy);}
+  catch(error){console.error(JSON.stringify({event:"lesson_translation_schedule_failed",lessonId,message:error instanceof Error?error.message:"unknown"}));}
 }
 
 async function cleanupFailedImport(env: Env, sql: ReturnType<typeof sqlFor>, resources: { lessonId: string; jobId: string; audioKey: string }): Promise<boolean> {

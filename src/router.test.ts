@@ -20,6 +20,8 @@ describe("application routing", () => {
     expect(viewHash({ page: "english" })).toBe("/learn/en");
     expect(resolveAppView("/", "#/admin")).toEqual({ page: "adminDashboard" });
     expect(viewHash({ page: "adminDashboard" })).toBe("/admin");
+    expect(resolveAppView("/", "#/admin/listening/translations")).toEqual({ page: "adminTranslations" });
+    expect(viewHash({ page: "adminTranslations" })).toBe("/admin/listening/translations");
   });
 
   it("leaves a canonical lesson before navigating back to a section", () => {

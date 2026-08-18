@@ -6,6 +6,7 @@ export type AppView =
   | { page: "adminDashboard" }
   | { page: "admin" }
   | { page: "adminManagement" }
+  | { page: "adminTranslations" }
   | { page: "canonicalLesson"; path: string }
   | { page: "coming"; language: "ja" | "zh" }
   | { page: "library"; language: TargetLanguage }
@@ -14,6 +15,7 @@ export type AppView =
 export function resolveAppView(pathname: string, hash: string): AppView {
   if (/^\/lessons\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+$/u.test(pathname)) return { page: "canonicalLesson", path: pathname };
   if (hash === "#/admin/listening/manage") return { page: "adminManagement" };
+  if (hash === "#/admin/listening/translations") return { page: "adminTranslations" };
   if (hash === "#/admin/listening") return { page: "admin" };
   if (hash === "#/admin") return { page: "adminDashboard" };
   if (/^#\/learn\/en(?:\/.*)?$/u.test(hash) || /^\/learn\/en(?:\/.*)?$/u.test(pathname)) return { page: "english" };
@@ -33,6 +35,7 @@ export function viewHash(view: Exclude<AppView, { page: "canonicalLesson" }>) {
     : view.page === "adminDashboard" ? "/admin"
     : view.page === "admin" ? "/admin/listening"
     : view.page === "adminManagement" ? "/admin/listening/manage"
+    : view.page === "adminTranslations" ? "/admin/listening/translations"
     : view.page === "coming" || view.page === "library" ? `/learn/${view.language}`
     : `/learn/${view.language}/lesson/${view.lessonId}`;
 }

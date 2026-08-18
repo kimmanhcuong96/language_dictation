@@ -10,7 +10,13 @@ export interface AccountUser {
   leaderboardVisible: boolean;
   isAdmin: boolean;
   listeningPreferences: ListeningPreferences;
+  preferredTranslationLanguage: string;
 }
+
+export interface TranslationLanguageOption { code:string; name:string; nativeName:string; isBuiltin:boolean; machineTranslationEnabled:boolean; status:"PENDING"|"ACTIVE"|"DISABLED"; isOwner:boolean; approvedCount:number; sentenceCount:number; canContribute:boolean; }
+export interface SentenceTranslation { id:string; sentenceId:string; text:string; source?:"GOOGLE"|"USER"|"ADMIN"; status?:string; updatedAt:string; }
+export interface TranslationReviewItem { id:string; sentenceId:string; languageCode:string; text:string; source:string; status:string; createdAt:string; position:number; transcript:string; lessonId:string; lessonTitle:string; languageName:string; submittedBy:string|null; }
+export interface TranslationSetReview { lessonId:string; lessonTitle:string; languageCode:string; languageName:string; status:string; machineStatus:string; lastError:string|null; attemptCount:number; lessonActive:boolean; languageStatus:string; sentenceCount:number; readySentenceCount:number; rejectedSentenceCount:number; canApproveLesson:boolean; approvalBlockReason:"lesson_inactive"|"language_inactive"|"translation_set_empty"|"translation_set_rejected"|"translation_set_incomplete"|null; }
 
 export interface ActivityEvent {
   eventId: string;
@@ -82,6 +88,15 @@ interface AuthContextValue {
   adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminUpdateLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminDeleteLesson: (lessonId: string) => Promise<void>;
+  getTranslationLanguages: (lessonId:string) => Promise<TranslationLanguageOption[]>;
+  getLessonTranslations: (lessonId:string,languageCode:string) => Promise<{approved:SentenceTranslation[];contributions:SentenceTranslation[];set:{status:string;machineStatus:string;lastError:string|null}|null}>;
+  addTranslationLanguage: (code:string) => Promise<TranslationLanguageOption>;
+  submitSentenceTranslation: (sentenceId:string,input:{languageCode:string;text:string}) => Promise<SentenceTranslation>;
+  saveTranslationPreference: (languageCode:string) => Promise<void>;
+  adminGetTranslations: (query?:string) => Promise<{translations:TranslationReviewItem[];translationSets:TranslationSetReview[]}>;
+  adminReviewTranslation: (translationId:string,action:"approve"|"reject",reason?:string) => Promise<void>;
+  adminApproveLessonTranslations: (lessonId:string,languageCode:string) => Promise<void>;
+  adminGenerateLessonTranslations: (lessonId:string,languageCode?:string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -240,6 +255,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminDeleteLesson: async (lessonId) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}`, { method: "DELETE", headers: { "X-CSRF-Token": csrf } });
+    },
+    getTranslationLanguages: async (lessonId) => (await api<{languages:TranslationLanguageOption[]}>(`/api/listening/translation-languages?lessonId=${encodeURIComponent(lessonId)}`)).languages,
+    getLessonTranslations: async (lessonId,languageCode) => api(`/api/listening/translations?lessonId=${encodeURIComponent(lessonId)}&languageCode=${encodeURIComponent(languageCode)}`),
+    addTranslationLanguage: async (code) => {
+      if(!csrf||!user)throw new Error("not_authenticated");
+      const result=await api<{language:TranslationLanguageOption}>("/api/listening/translation-languages",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({code})});return result.language;
+    },
+    submitSentenceTranslation: async (sentenceId,input) => {
+      if(!csrf||!user)throw new Error("not_authenticated");
+      const result=await api<{translation:SentenceTranslation}>(`/api/listening/translations/${encodeURIComponent(sentenceId)}`,{method:"PUT",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(input)});return result.translation;
+    },
+    saveTranslationPreference: async (languageCode) => {
+      if(!csrf||!user)throw new Error("not_authenticated");await api("/api/listening/translation-preference",{method:"PATCH",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({languageCode})});setUser({...user,preferredTranslationLanguage:languageCode});
+    },
+    adminGetTranslations: async (query="") => {
+      if(!user?.isAdmin)throw new Error("forbidden");return api<{translations:TranslationReviewItem[];translationSets:TranslationSetReview[]}>(`/api/listening/admin/translations?status=PENDING&q=${encodeURIComponent(query)}`);
+    },
+    adminReviewTranslation: async (translationId,action,reason) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/translations/${encodeURIComponent(translationId)}`,{method:"PATCH",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({action,reason})});
+    },
+    adminApproveLessonTranslations: async (lessonId,languageCode) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/translations/lessons/${encodeURIComponent(lessonId)}/${encodeURIComponent(languageCode)}/approve`,{method:"POST",headers:{"X-CSRF-Token":csrf}});
+    },
+    adminGenerateLessonTranslations: async (lessonId,languageCode) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/translations/lessons/${encodeURIComponent(lessonId)}/generate`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(languageCode?{languageCode}:{})});
     },
   }), [user, loading, csrf, sendActivity]);
 

@@ -2701,6 +2701,22 @@ AI alignment allowed
 
 ---
 
+## 92A. Extensible Lesson Translation Workflow
+
+Lesson translations are content records and must remain separate from interface i18n. Target languages use canonical BCP 47 codes. The built-in machine-translation targets are Vietnamese (`vi`), Simplified Chinese (`zh-CN`), and Japanese (`ja`), while the schema and APIs must accept future valid language tags without schema changes.
+
+Google Cloud Translation Basic v2 uses the mandatory Worker secret `GOOGLE_TRANSLATE_API_KEY`. Never expose this credential to the browser or declare it in `wrangler.jsonc`. Import and publication must remain successful when translation is unavailable. Persist a durable machine status (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, or `NOT_CONFIGURED`) and provide an administrator retry action. Automatic work runs outside the critical import transaction.
+
+Translations are immutable reviewable versions rather than fields on a sentence. Google, users, and administrators may submit candidates. Only `APPROVED` versions are public. Approving a replacement marks the previous approved version `SUPERSEDED`. Rejecting records a reason, and all generation, submission, update, approval, rejection, bulk approval, and supersession actions are auditable. Editing source transcript text supersedes affected pending/approved translations and schedules regeneration for machine-enabled languages.
+
+Authenticated users may add a target language and manually submit a translation. The add-language control must display the centrally maintained catalog of exactly 30 popular languages; users must not enter arbitrary language codes or names. Existing choices remain visible but disabled. The Worker must enforce the same catalog and derive canonical code, English name, and native name server-side so a crafted request cannot bypass the UI. User-created languages and candidates remain private to their creator and administrators until approval. The client provides a target-language selector, remembers the user's preference, shows approved text, shows the user's own pending candidate, and supports proposing a correction without removing the currently approved public version.
+
+Administrators can approve or reject one sentence candidate, approve a complete lesson/language set atomically, and retry machine translation. Whole-lesson approval is rejected unless every sentence has either an approved version or a pending candidate. The latest pending candidate for each sentence is selected during bulk approval; existing approved sentences remain approved when no replacement is pending.
+
+The whole-lesson approval action is enabled only when at least one sentence has a translation, no sentence is currently rejected or missing a pending/approved translation, the lesson is published and active, and the target language has `ACTIVE` status. These constraints must be calculated for the administration UI and enforced again by the Worker endpoint.
+
+---
+
 ## 93. Instruction to Codex
 
 Do not start by creating a new implementation from scratch.
