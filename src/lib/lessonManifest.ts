@@ -19,6 +19,13 @@ export interface LessonManifestItem {
 export interface LessonManifest { version: string; lessons: LessonManifestItem[]; }
 const CACHE_KEY = "me2listen-lesson-manifest-v2";
 
+export function findNextLesson(manifest: LessonManifest | undefined, currentLessonId: string, language = "en"): LessonManifestItem | undefined {
+  if (!manifest) return undefined;
+  const lessons = manifest.lessons.filter((lesson) => lesson.language === language);
+  const currentIndex = lessons.findIndex((lesson) => lesson.id === currentLessonId);
+  return currentIndex >= 0 ? lessons[currentIndex + 1] : undefined;
+}
+
 export async function loadLessonManifest(): Promise<LessonManifest> {
   const cached = readManifest();
   const url = cached ? `/api/listening/manifest?version=${encodeURIComponent(cached.version)}` : "/api/listening/manifest";

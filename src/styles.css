@@ -178,3 +178,38 @@ h1,h2,h3 { font-family: "Manrope", sans-serif; }
 .admin-system .import-mode-tabs button.active,.admin-system .batch-actions>.primary-button,.admin-system .primary-button{border-color:#168a55;background:#168a55;color:white}.admin-system .selected-section{border-color:#285747;background:#112a24}.admin-system .batch-progress{background:var(--admin-surface-2)}.admin-system .batch-summary b{color:var(--admin-text)}.admin-system .batch-summary span,.admin-system .batch-item small,.admin-system .admin-lesson-list small,.admin-system .admin-import small{color:var(--admin-muted)}.admin-system a,.admin-system .admin-lesson-list a{color:var(--admin-accent)}.admin-inline-link{margin:0 0 22px;padding:0;border:0;background:transparent;color:var(--admin-accent);font-weight:800;cursor:pointer}
 @media(max-width:900px){.admin-system-header{align-items:flex-start;padding:14px 20px}.admin-system-actions{flex-wrap:wrap}.admin-account{max-width:190px}.admin-system-main{width:calc(100vw - 40px)}}
 @media(max-width:620px){.admin-system-header{display:grid}.admin-system-actions{justify-content:flex-start}.admin-account{order:-1;max-width:100%;flex:1}.admin-system-actions button:not(.admin-icon-button){font-size:0}.admin-system-actions button:not(.admin-icon-button) svg{margin:0}.admin-dashboard-grid{grid-template-columns:1fr}.admin-feature-card{min-height:230px}.admin-system-main{padding-top:24px}}
+
+/* Lesson mode switch and timestamp-synchronized full transcript */
+.lesson-mode-tabs{width:max-content;margin:0 auto 18px;justify-content:center;gap:4px;padding:4px;border:1px solid #dce5df;border-radius:13px;background:#f0f5f2;box-shadow:0 3px 12px #263a2f0b}
+.lesson-mode-tabs button{min-height:42px;padding:0 17px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:9px;color:#59636f;font:700 12px "Manrope";transition:background .18s,border-color .18s,color .18s,box-shadow .18s}
+.lesson-mode-tabs button+button{margin-left:0}
+.lesson-mode-tabs button:hover:not(.active){border-color:#d7e1db;background:#fff;color:#2e493a}
+.lesson-mode-tabs button.active{position:relative;z-index:2;border-color:#3f705c;border-bottom-color:#3f705c;background:#3f705c;color:#fff;box-shadow:0 4px 11px #214c3930}
+.lesson-mode-tabs .transcript-tab.active{border-color:#16a66a;border-bottom-color:#16a66a;background:#16a66a;color:#fff;box-shadow:0 5px 14px #16a66a40}
+.lesson-practice-card{border-radius:12px}
+.lesson-practice-card.full-transcript-view>audio{width:100%;margin-bottom:20px;accent-color:#16a66a}
+.lesson-practice-card.full-transcript-view ol{max-width:940px;margin:0;padding:0;display:grid;gap:3px;list-style:none}
+.lesson-practice-card.full-transcript-view li{min-height:43px;padding:10px 12px;display:flex;align-items:flex-start;gap:13px;border-radius:9px;color:var(--ink);transition:background .16s,color .16s,box-shadow .16s}
+.lesson-practice-card.full-transcript-view li.current{background:#dcf8e9;color:#105f3f;box-shadow:inset 3px 0 #18ad70}
+.lesson-practice-card.full-transcript-view li>span{width:25px;flex:0 0 auto;padding-top:3px;color:#819088;font:750 11px "Manrope"}
+.lesson-practice-card.full-transcript-view li.current>span{color:#168458}
+.lesson-practice-card.full-transcript-view li>p{margin:0;font-size:15px;line-height:1.5}
+@media(max-width:650px){.lesson-mode-tabs{width:100%}.lesson-mode-tabs button{flex:1;padding:0 12px}.lesson-practice-card.full-transcript-view li{padding:9px 8px}.lesson-practice-card.full-transcript-view li>p{font-size:14px}}
+
+.next-lesson-card{max-width:700px;min-height:96px;margin-top:14px;padding:17px 18px;display:flex;align-items:center;gap:15px;border:1px solid #d7e3dc;border-radius:12px;background:linear-gradient(135deg,#fff 0%,#f3fbf6 100%);color:var(--ink);text-decoration:none;box-shadow:0 5px 16px #233b2d0b;transition:transform .18s,border-color .18s,box-shadow .18s}
+.next-lesson-card:hover{transform:translateY(-2px);border-color:#75b692;box-shadow:0 12px 28px #1f4f3518}
+.next-lesson-card:focus-visible{outline:3px solid var(--focus-ring);outline-offset:3px}
+.next-lesson-icon{width:46px;height:46px;flex:0 0 46px;display:grid;place-items:center;border-radius:11px;background:#daf4e5;color:#168458}
+.next-lesson-copy{min-width:0;flex:1;display:grid;gap:4px}
+.next-lesson-copy small{color:#168458;font:800 10px "Manrope";letter-spacing:.65px;text-transform:uppercase}
+.next-lesson-copy strong{overflow:hidden;color:#203229;font:750 16px/1.35 "Manrope";text-overflow:ellipsis;white-space:nowrap}
+.next-lesson-copy>span{overflow:hidden;color:#69766e;font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.next-lesson-arrow{flex:0 0 auto;color:#5a8f70;transition:transform .18s}
+.next-lesson-card:hover .next-lesson-arrow{transform:translateX(4px)}
+@media(max-width:650px){.next-lesson-card{padding:14px}.next-lesson-icon{width:40px;height:40px;flex-basis:40px}.next-lesson-copy strong{font-size:14px}.next-lesson-arrow{width:18px}}
+
+.shortcut-tooltip{position:relative;display:inline-flex}
+.shortcut-tooltip-content{position:absolute;z-index:20;left:50%;bottom:calc(100% + 9px);width:max-content;max-width:220px;padding:7px 10px;visibility:hidden;opacity:0;transform:translate(-50%,4px);border-radius:7px;background:#1f2d25;color:#fff;font:650 10px/1.35 "Manrope";text-align:center;white-space:nowrap;box-shadow:0 7px 18px #17231c35;pointer-events:none;transition:opacity .15s,transform .15s,visibility .15s}
+.shortcut-tooltip-content:after{content:"";position:absolute;left:50%;top:100%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1f2d25}
+.shortcut-tooltip:hover .shortcut-tooltip-content,.shortcut-tooltip:focus-within .shortcut-tooltip-content{visibility:visible;opacity:1;transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){.shortcut-tooltip-content{transition:none}}

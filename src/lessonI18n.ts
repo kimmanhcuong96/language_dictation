@@ -7,5 +7,13 @@ const messages = {
   ja: { vocabLevel: "レベル", sentenceProgress: "文", previousSentence: "前の文", nextSentence: "次の文", answer: "答え", correctAnswer: "正解", revealedAnswer: "答えを表示しました", pronunciation: "発音練習", pronunciationHint: "文を声に出して、リズムと音のつながりを覚えましょう。", microphoneSoon: "音声回答機能は近日公開予定です", listeningTip: "リスニングのヒント", listeningTipText: "確認やスキップの前に2〜3回聞きましょう。答えを見た後は、文全体を声に出してみてください。", settings: "再生オプション", dictationTab: "ディクテーション", transcriptTab: "全文", settingsTitle:"リスニング設定", closeSettings:"設定を閉じる", settingsDescription:"この設定はアカウントごとに保存されます。", replayKey:"リプレイキー", playPauseKey:"再生 / 一時停止キー", autoReplay:"自動リプレイ", replayDelay:"リプレイ間隔", wordSuggestions:"スマートフォンの単語候補", shortcutTips:"ショートカットのヒントを表示", seconds:"秒", enabled:"有効", disabled:"無効", settingsSaveError:"設定を保存できませんでした。もう一度お試しください。", replayShortcut:"リプレイ", playPauseShortcut:"再生 / 一時停止" },
 } as const satisfies Record<UiLocale, Record<string, string>>;
 
-export type LessonMessageKey = keyof typeof messages.en;
-export const lessonT = (locale: UiLocale, key: LessonMessageKey) => messages[locale][key];
+const supplementalMessages = {
+  vi: { nextLesson: "Bài nghe tiếp theo", checkShortcut: "Nhấn Enter để kiểm tra", skipShortcut: "Nhấn Esc để bỏ qua" },
+  en: { nextLesson: "Next listening lesson", checkShortcut: "Press Enter to check", skipShortcut: "Press Esc to skip" },
+  zh: { nextLesson: "下一节听力课", checkShortcut: "按 Enter 检查", skipShortcut: "按 Esc 跳过" },
+  ja: { nextLesson: "次のリスニングレッスン", checkShortcut: "Enterで確認", skipShortcut: "Escでスキップ" },
+} as const satisfies Record<UiLocale, Record<"nextLesson" | "checkShortcut" | "skipShortcut", string>>;
+
+type SupplementalMessageKey = keyof typeof supplementalMessages.en;
+export type LessonMessageKey = keyof typeof messages.en | SupplementalMessageKey;
+export const lessonT = (locale: UiLocale, key: LessonMessageKey) => key in supplementalMessages.en ? supplementalMessages[locale][key as SupplementalMessageKey] : messages[locale][key as keyof typeof messages.en];

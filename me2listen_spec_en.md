@@ -933,9 +933,14 @@ Full transcript mode:
 ```text
 full lesson audio
 complete transcript
+timestamp-synchronized active transcript highlighting
 ```
 
-The full transcript player may display the complete lesson duration.
+The full transcript player may display the complete lesson duration. While the full audio is playing or being seeked, the transcript line whose `[start_ms, end_ms)` interval contains the current playback position must be highlighted. The final line includes its exact `end_ms`; gaps between timestamp ranges must not highlight an unrelated line.
+
+Below the listening tip, display a localized, keyboard-accessible next-lesson card whenever another published English lesson exists in manifest order. The card must show the next lesson title and useful context such as category, section, optional level, and sentence count, and navigate through its canonical lesson path. Do not render an inactive or fabricated card for the final English lesson.
+
+In Dictation mode, Enter invokes Check while an answer is available, including when the answer textarea has focus. After a Check attempt, hide Check until the user changes the textarea value; Enter must not resubmit the unchanged answer while Check is hidden. Editing the answer clears the previous feedback state and restores Check. Escape invokes Skip only while Skip is visible. These shortcuts must not fire inside the Settings dialog or conflict with its Escape-to-close behavior. The Check and Skip controls must expose localized shortcut tooltips on pointer hover and keyboard focus.
 
 ---
 
@@ -1043,7 +1048,7 @@ Section 2
 
 Sections must be loaded from the database.
 
-The category page should present sections as accessible collapsible panels. The first section opens by default, and each expanded panel shows its published lessons in database order. Each lesson entry displays its title, sentence count, and optional level. Users can search by lesson title and filter by the levels actually available in the category; filtering must preserve the original section and lesson order and expose a clear empty state. The layout must adapt from three lesson columns on desktop to a single column on small screens while retaining keyboard navigation and visible focus states.
+The category page should present sections as accessible collapsible panels. All sections are collapsed by default, and each expanded panel shows its published lessons in database order. Search and level filters may automatically expand sections containing matching lessons. Each lesson entry displays its title, sentence count, and optional level. Users can search by lesson title and filter by the levels actually available in the category; filtering must preserve the original section and lesson order and expose a clear empty state. The layout must adapt from three lesson columns on desktop to a single column on small screens while retaining keyboard navigation and visible focus states.
 
 Optionally display:
 
@@ -1997,6 +2002,10 @@ When the user selects Skip, fill the answer field with the complete canonical se
 The microphone control is a disabled, accessible placeholder for a future spoken-answer feature. It must not request microphone permission or imply that recording is currently available.
 
 The Dictation Settings dialog must configure replay and play/pause shortcuts, automatic replay, delay between automatic replays, smartphone word suggestions, and shortcut-tip visibility. Settings must affect the active player immediately after saving. Authenticated users store validated preferences on their account so they follow the user across devices; guest preferences use an isolated local profile. The dialog must support Escape, focus trapping, focus restoration, backdrop dismissal, keyboard navigation, and localized labels. Conflicting shortcuts are not allowed.
+
+The default replay shortcut is Ctrl. Supported replay choices are Ctrl, Shift, Alt, Command, Ctrl + Shift, Ctrl + Alt, Ctrl + Space, and Ctrl + b. Shortcut persistence uses platform-neutral semantic values so Ctrl and Command work independently of left/right physical key positions.
+
+The play/pause shortcut has exactly one supported value: backtick (`). Existing Space or Enter values must migrate to backtick.
 
 ---
 

@@ -168,4 +168,8 @@ Thumbnail, PDF, ảnh minh họa và resource khác hiện chưa có UI/API qu�
 
 Trong một bài nghe, chọn **Tùy chọn phát** để mở hộp thoại cài đặt. Bạn có thể đổi phím nghe lại, phím phát/tạm dừng, bật tự động nghe lại, chọn thời gian chờ giữa các lần nghe, bật gợi ý từ trên điện thoại và bật/tắt mẹo phím tắt. Chọn **Lưu thay đổi** để áp dụng.
 
+Phím nghe lại mặc định là **Ctrl**. Các lựa chọn gồm Ctrl, Shift, Alt, Command, Ctrl + Shift, Ctrl + Alt, Ctrl + Space và Ctrl + b.
+
+Phím phát/tạm dừng luôn là backtick `` ` ``.
+
 Nếu đã đăng nhập, cài đặt được lưu riêng trên tài khoản và dùng lại trên các thiết bị khác. Nếu chưa đăng nhập, cài đặt chỉ được lưu cho profile khách trên trình duyệt hiện tại.
