@@ -54,6 +54,8 @@ Token cần quyền Workers AI Read/Write theo Cloudflare. Không đưa token v�
 
 Ba biến `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN` và `CLOUDFLARE_AI_MODEL` không được khai báo trong `wrangler.jsonc`. Project đã bật `keep_vars: true`, vì vậy các giá trị bạn đặt trên Cloudflare Dashboard sẽ được giữ nguyên khi deploy code mới.
 
+`GOOGLE_CLIENT_ID` và `APP_ORIGIN` cũng chỉ được cấu hình trong **Variables and Secrets** của môi trường deployment, không nằm trong `wrangler.jsonc`. `APP_ORIGIN` phải là origin chính xác của ứng dụng, không có dấu `/` cuối, ví dụ `https://me2listen.example.com`. Nhờ `keep_vars: true`, deploy code mới không ghi đè hai biến này.
+
 Chạy migration trong database mục tiêu:
 
 ```powershell

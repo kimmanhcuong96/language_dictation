@@ -44,7 +44,7 @@ Backend là Cloudflare Worker trong `worker/index.ts`; frontend và API chạy c
    npx wrangler d1 create echotype-db
    ```
 
-4. Đặt `GOOGLE_CLIENT_ID` và `APP_ORIGIN` trong `wrangler.jsonc`. Không commit client secret; lưu bằng secret:
+4. Đặt `GOOGLE_CLIENT_ID` và `APP_ORIGIN` trong **Variables and Secrets** của môi trường deployment trên Cloudflare Dashboard. Không khai báo hai biến này trong `wrangler.jsonc`. Đặt client secret và Translation API key dưới dạng secret:
 
    ```bash
    npx wrangler secret put GOOGLE_CLIENT_SECRET
@@ -61,7 +61,7 @@ Backend là Cloudflare Worker trong `worker/index.ts`; frontend và API chạy c
    npx wrangler deploy
    ```
 
-Local development: sao chép `.dev.vars.example` thành `.dev.vars`, điền Google client secret, đặt client ID/origin local trong `wrangler.jsonc`, rồi chạy `corepack pnpm cf:dev`.
+Local development: sao chép `.dev.vars.example` thành `.dev.vars`, điền Google client ID, client secret và origin local trong file đó, rồi chạy `corepack pnpm cf:dev`.
 
 ### Quy tắc tiến độ và xếp hạng
 

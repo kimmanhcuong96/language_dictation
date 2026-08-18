@@ -11,10 +11,6 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/auth/*", "/lessons/*", "/sitemap.xml", "/robots.txt"]
   },
-  "vars": {
-    "GOOGLE_CLIENT_ID": "1059777304131-gour3h7dbrfe648mia9qvnj8peqep9qa.apps.googleusercontent.com",
-    "APP_ORIGIN": "https://me2listen.kimmanhcuong96.workers.dev"
-  },
   "r2_buckets": [
     { "binding": "LISTENING_AUDIO", "bucket_name": "me2listen-audio" }
   ],
