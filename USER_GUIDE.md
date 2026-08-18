@@ -74,15 +74,9 @@ Project đã bật `keep_vars: true` và không khai báo `ADMIN_EMAILS` trong `
 
 ### Google Cloud Translation
 
-Ứng dụng dùng Cloud Translation Basic v2 để tạo bản dịch đề xuất cho `vi`, `zh-CN` và `ja`. Tạo API key trong Google Cloud project đã bật Cloud Translation API, giới hạn key cho API này, rồi lưu dưới dạng Worker secret/environment:
+Google machine translation hiện đang tắt bằng cờ `machine_translation_enabled` trong database. Worker không tự tạo candidate và không gọi Google Translation API, kể cả khi `GOOGLE_TRANSLATE_API_KEY` vẫn còn trên môi trường deployment. Không cần cấu hình API key trong giai đoạn này.
 
-```text
-GOOGLE_TRANSLATE_API_KEY=your-google-cloud-translation-api-key
-```
-
-Không khai báo key trong `wrangler.jsonc`, source code hoặc frontend. `keep_vars: true` giúp giá trị đặt trên Dashboard không bị ghi đè khi deploy. Nếu chưa cấu hình key, import lesson vẫn thành công; translation set chuyển thành `NOT_CONFIGURED` để admin retry sau.
-
-Sau khi import/publish, Worker tạo candidate cho ba ngôn ngữ mặc định ở background. Candidate không xuất hiện công khai cho đến khi admin duyệt.
+Bản dịch hiện được lấy từ contribution của người dùng. Contribution có trạng thái chờ duyệt và không xuất hiện công khai cho đến khi admin duyệt.
 
 Sau khi đổi binding/config:
 
@@ -190,7 +184,7 @@ Nếu đã đăng nhập, cài đặt được lưu riêng trên tài khoản v�
 
 ## 10. Quản lý bản dịch lesson
 
-Sau khi lesson được publish, hệ thống tự tạo candidate bằng Google cho tiếng Việt (`vi`), tiếng Trung giản thể (`zh-CN`) và tiếng Nhật (`ja`). Đây chỉ là bản chờ duyệt, chưa hiển thị công khai.
+Sau khi lesson được publish, người học đã đăng nhập có thể gửi bản dịch cho từng câu. Đây chỉ là bản chờ duyệt, chưa hiển thị công khai.
 
 Để kiểm duyệt:
 
@@ -199,9 +193,8 @@ Sau khi lesson được publish, hệ thống tự tạo candidate bằng Google
 3. So sánh câu gốc và bản dịch.
 4. Chọn **Duyệt** hoặc **Từ chối** cho từng câu.
 5. Chọn **Duyệt toàn bộ lesson** khi tất cả câu đã có candidate hợp lệ.
-6. Nếu Google lỗi hoặc trước đó chưa có API key, chọn **Tạo / thử lại Google**.
 
-Khi duyệt một candidate mới, bản đã duyệt trước đó được lưu vào lịch sử với trạng thái `SUPERSEDED`; hệ thống không xóa lịch sử. Khi transcript gốc bị sửa, các bản dịch liên quan cũng chuyển thành `SUPERSEDED` và ba bản dịch mặc định được tạo lại.
+Khi duyệt một contribution mới, bản đã duyệt trước đó được lưu vào lịch sử với trạng thái `SUPERSEDED`; hệ thống không xóa lịch sử. Khi transcript gốc bị sửa, các bản dịch liên quan cũng chuyển thành `SUPERSEDED` và cần được người dùng cung cấp lại.
 
 Nút **Duyệt toàn bộ lesson** chỉ được bật khi có ít nhất một câu có bản dịch; mọi sentence đều có bản dịch đang chờ duyệt hoặc đã duyệt, không còn sentence bị từ chối hay thiếu; lesson đang được xuất bản và ngôn ngữ đích có trạng thái `ACTIVE`. Khi nút bị khóa, di chuột lên nút để xem nguyên nhân.
 

@@ -44,14 +44,13 @@ Backend là Cloudflare Worker trong `worker/index.ts`; frontend và API chạy c
    npx wrangler d1 create echotype-db
    ```
 
-4. Đặt `GOOGLE_CLIENT_ID` và `APP_ORIGIN` trong **Variables and Secrets** của môi trường deployment trên Cloudflare Dashboard. Không khai báo hai biến này trong `wrangler.jsonc`. Đặt client secret và Translation API key dưới dạng secret:
+4. Đặt `GOOGLE_CLIENT_ID` và `APP_ORIGIN` trong **Variables and Secrets** của môi trường deployment trên Cloudflare Dashboard. Không khai báo hai biến này trong `wrangler.jsonc`. Đặt client secret dưới dạng secret:
 
    ```bash
    npx wrangler secret put GOOGLE_CLIENT_SECRET
-   npx wrangler secret put GOOGLE_TRANSLATE_API_KEY
    ```
 
-   `GOOGLE_TRANSLATE_API_KEY` dùng Cloud Translation Basic v2 để tạo candidate tiếng Việt, Trung giản thể và Nhật. Không khai báo API key trong `wrangler.jsonc` hoặc frontend.
+   Google machine translation hiện đang tắt. Bản dịch được lấy từ contribution của người dùng và chỉ hiển thị công khai sau khi admin duyệt.
 
 5. Chạy migration và deploy:
 
