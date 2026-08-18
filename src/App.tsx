@@ -40,26 +40,12 @@ import { answerScore } from "./lib/text";
 import { evaluateAnswer } from "./lib/dictation";
 import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
+import { navigateToHash, navigateToPath, resolveAppView, viewHash, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
 import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
 
-type View = { page: "home" } | { page: "english" } | { page: "admin" } | { page: "adminManagement" } | { page: "canonicalLesson"; path:string } | { page: "coming"; language: "ja"|"zh" } | { page: "library"; language: TargetLanguage } | { page: "lesson"; language: TargetLanguage; lessonId: string };
-
-const getInitialView = (): View => {
-  const canonicalMatch = window.location.pathname.match(/^\/lessons\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+$/u);
-  if (canonicalMatch) return { page: "canonicalLesson", path: window.location.pathname };
-  if (window.location.hash === "#/admin/listening") return { page: "admin" };
-  if (window.location.hash === "#/admin/listening/manage") return { page: "adminManagement" };
-  if (/^#\/learn\/en(?:\/.*)?$/u.test(window.location.hash)) return { page: "english" };
-  const comingMatch = window.location.hash.match(/^#\/learn\/(ja|zh)(?:\/.*)?$/u);
-  if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja"|"zh" };
-  const lessonMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)\/lesson\/(.+)$/);
-  if (lessonMatch) return { page: "lesson", language: lessonMatch[1] as TargetLanguage, lessonId: lessonMatch[2] };
-  const libraryMatch = window.location.hash.match(/^#\/learn\/(en|zh|ja)$/);
-  if (libraryMatch) return { page: "library", language: libraryMatch[1] as TargetLanguage };
-  const legacyMatch = window.location.hash.match(/^#\/lesson\/(.+)$/);
-  return legacyMatch ? { page: "lesson", language: "en", lessonId: legacyMatch[1] } : { page: "home" };
-};
+type View = AppView;
+const getInitialView = (): View => resolveAppView(window.location.pathname, window.location.hash);
 
 const levelClass: Record<Level, string> = { A1: "mint", A2: "sky", B1: "amber", B2: "rose" };
 
@@ -73,9 +59,13 @@ function App() {
   });
 
   useEffect(() => {
-    const onHash = () => setView(getInitialView());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    const onLocationChange = () => setView(getInitialView());
+    window.addEventListener("hashchange", onLocationChange);
+    window.addEventListener("popstate", onLocationChange);
+    return () => {
+      window.removeEventListener("hashchange", onLocationChange);
+      window.removeEventListener("popstate", onLocationChange);
+    };
   }, []);
 
   useEffect(() => saveProgress(progress), [progress]);
@@ -92,8 +82,8 @@ function App() {
   }, [auth.user?.id]);
 
   const navigate = (next: View) => {
-    if (next.page === "canonicalLesson") { window.history.pushState({}, "", next.path); setView(next); return; }
-    window.location.hash = next.page === "home" ? "/" : next.page === "english" ? "/learn/en" : next.page === "admin" ? "/admin/listening" : next.page === "adminManagement" ? "/admin/listening/manage" : next.page === "coming" ? `/learn/${next.language}` : next.page === "library" ? `/learn/${next.language}` : `/learn/${next.language}/lesson/${next.lessonId}`;
+    if (next.page === "canonicalLesson") navigateToPath(next.path);
+    else navigateToHash(viewHash(next));
     setView(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -126,7 +116,7 @@ function App() {
   );
 }
 
-function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>{window.location.hash=`/learn/${language}`;}}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
+function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToHash(`/learn/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -544,7 +534,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     {open && <div className="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
-      {auth.user.isAdmin && <button onClick={() => { window.location.hash="/admin/listening"; setOpen(false); }}><Library size={16} />Content management</button>}
+      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin/listening"); setOpen(false); }}><Library size={16} />Content management</button>}
       <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}
