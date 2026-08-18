@@ -39,6 +39,7 @@ import { resolveAudioUrl, speak } from "./lib/audio";
 import { answerScore } from "./lib/text";
 import { evaluateAnswer } from "./lib/dictation";
 import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
+import { AdminDashboardPage } from "./components/admin/AdminDashboardPage";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import { navigateToHash, navigateToPath, resolveAppView, viewHash, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
@@ -94,10 +95,12 @@ function App() {
     <EnglishLearningApp locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
   ) : view.page === "canonicalLesson" ? (
     <EnglishLearningApp canonicalPath={view.path} locale={locale} onHome={() => navigate({page:"home"})} header={<LearningHeader language="en" locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})} onDictation={() => navigate({page:"english"})} />} />
+  ) : view.page === "adminDashboard" ? (
+    <AdminDashboardPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "admin" ? (
     <AdminListeningPage locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminManagement" ? (
-    <LessonManagementPage onHome={() => navigate({page:"home"})}/>
+    <LessonManagementPage locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
@@ -534,7 +537,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     {open && <div className="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
-      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin/listening"); setOpen(false); }}><Library size={16} />Content management</button>}
+      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin"); setOpen(false); }}><Library size={16} />Content management</button>}
       <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}

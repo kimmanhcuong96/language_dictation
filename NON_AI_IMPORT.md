@@ -16,7 +16,7 @@ Tên lesson được lấy từ basename (`001-greetings`); slug được hệ t
 ## Import trực tiếp
 
 1. Chọn **Nhập không dùng AI**.
-2. Chọn target section và level.
+2. Chọn target section; level là tùy chọn.
 3. Chọn **MP3 + SRT files**.
 4. Chọn một hoặc nhiều cặp MP3/SRT cùng lúc.
 5. Bấm **Kiểm tra và xem trước**.

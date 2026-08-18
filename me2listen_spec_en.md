@@ -1027,6 +1027,8 @@ sort_order
 is_published
 ```
 
+The All Topics UI should use the category endpoint as the authoritative ordered category list and may combine it with the lesson manifest for derived statistics. Each topic card should show the category name, description when available, the published lesson count, and the available level range. Categories without lessons should still render when published. If no managed topic image exists, use a deterministic lightweight visual fallback rather than a remote or hard-coded category image.
+
 ---
 
 ## 33. Category Page
@@ -1040,6 +1042,8 @@ Section 2
 ```
 
 Sections must be loaded from the database.
+
+The category page should present sections as accessible collapsible panels. The first section opens by default, and each expanded panel shows its published lessons in database order. Each lesson entry displays its title, sentence count, and optional level. Users can search by lesson title and filter by the levels actually available in the category; filtering must preserve the original section and lesson order and expose a clear empty state. The layout must adapt from three lesson columns on desktop to a single column on small screens while retaining keyboard navigation and visible focus states.
 
 Optionally display:
 
@@ -1988,9 +1992,11 @@ A sentence should only be marked completed when the answer satisfies the `correc
 
 Do not mark it completed simply because the user navigates forward if the product requires dictation completion.
 
-If skipping is supported in the future, store `skipped` separately if necessary.
+When the user selects Skip, fill the answer field with the complete canonical sentence and reveal the answer state. Hide Check and Skip, and show Next. Skipping must not mark the sentence as completed or increase completion progress unless a separate skipped state is introduced in persistence later.
 
-Skipping does not need to be implemented in the first phase.
+The microphone control is a disabled, accessible placeholder for a future spoken-answer feature. It must not request microphone permission or imply that recording is currently available.
+
+The Dictation Settings dialog must configure replay and play/pause shortcuts, automatic replay, delay between automatic replays, smartphone word suggestions, and shortcut-tip visibility. Settings must affect the active player immediately after saving. Authenticated users store validated preferences on their account so they follow the user across devices; guest preferences use an isolated local profile. The dialog must support Escape, focus trapping, focus restoration, backdrop dismissal, keyboard navigation, and localized labels. Conflicting shortcuts are not allowed.
 
 ---
 

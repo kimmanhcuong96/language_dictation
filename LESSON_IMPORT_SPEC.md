@@ -4,7 +4,7 @@ This document defines the implemented Admin import contract. It supplements the 
 
 ## Modes
 
-`#/admin/listening` exposes two independent modes:
+The Admin account menu opens the card-based dashboard at `#/admin`. Its **Lesson import** card opens `#/admin/listening`, which exposes two independent modes:
 
 - **AI Import** accepts one audio file plus an Admin-authored transcript with one sentence per line. AI may determine timestamps only. The submitted transcript is canonical, audio content absent from that transcript is ignored, and the result remains a draft until the Admin reviews the segments and publishes it.
 - **Non-AI Import** accepts prepared MP3 and standard SRT pairs. It never calls AI and publishes each valid lesson after explicit batch confirmation.
@@ -34,6 +34,8 @@ Lesson, sentence, import-job, and R2 persistence reuse the common listening impo
 All import controls, progress labels, statuses, validation messages, and known backend error codes must use the selected UI locale (`vi`, `en`, `zh`, or `ja`). Lesson titles, section names, transcripts, filenames, and slugs are content and must not be translated.
 
 The selected section remains visible during preview. AI review provides per-sentence playback and editable text/start/end timestamps before publish.
+
+Level is optional in both modes. An omitted or blank level is stored as `NULL`; canonical routing uses the existing `all` path segment for lessons without a level.
 
 ## Limits and deployment
 

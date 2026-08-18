@@ -12,6 +12,8 @@ describe("admin import i18n", () => {
 
   it("interpolates values", () => {
     expect(adminImportT("vi", "confirmImport", { count: 3 })).toContain("3");
+    expect(adminImportT("vi", "level")).toContain("không bắt buộc");
+    expect(adminImportT("en", "level")).toContain("optional");
   });
 
   it("localizes known backend errors and statuses", () => {

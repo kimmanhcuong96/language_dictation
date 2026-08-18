@@ -18,6 +18,8 @@ describe("application routing", () => {
   it("builds matching hash routes", () => {
     expect(hashHref("/learn/en/short-stories")).toBe("#/learn/en/short-stories");
     expect(viewHash({ page: "english" })).toBe("/learn/en");
+    expect(resolveAppView("/", "#/admin")).toEqual({ page: "adminDashboard" });
+    expect(viewHash({ page: "adminDashboard" })).toBe("/admin");
   });
 
   it("leaves a canonical lesson before navigating back to a section", () => {

@@ -12,11 +12,12 @@ export interface LessonManifestItem {
   sectionNumber: number;
   sectionTitle: string;
   order: number;
+  sentenceCount: number;
   updatedAt: string;
 }
 
 export interface LessonManifest { version: string; lessons: LessonManifestItem[]; }
-const CACHE_KEY = "me2listen-lesson-manifest-v1";
+const CACHE_KEY = "me2listen-lesson-manifest-v2";
 
 export async function loadLessonManifest(): Promise<LessonManifest> {
   const cached = readManifest();

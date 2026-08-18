@@ -1,6 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { unzipSync, zipSync } from "fflate";
 import { validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
+import { normalizeOptionalLevel } from "../src/lib/importMetadata";
 import { describeImportResource, NON_AI_IMPORT_LIMITS, pairImportResources, parseNonAiSrt } from "../src/lib/nonAiImport";
 import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle } from "../src/lib/slug";
@@ -71,8 +72,8 @@ async function getManifest(env: Env, url: URL) {
   const versionRows = await sql`SELECT version::text AS version FROM listening_manifest_meta WHERE id=true`;
   const version = String(versionRows[0]?.version ?? "1");
   if (url.searchParams.get("version") === version) return new Response(null, { status: 304, headers: { ETag: `"${version}"`, "Cache-Control": "no-cache" } });
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sort_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.title`;
-  return json({ version, lessons: rows.map((row) => ({ id: row.id, name: row.title, slug: row.slug, path: row.path, parentId: `${row.language_code}-${row.section_id}`, language: row.language_code, level: row.level, categorySlug: row.category_slug, categoryName: row.category_name, sectionId: row.section_id, sectionNumber: row.section_number, sectionTitle: row.section_title, order: row.sort_order, updatedAt: row.updated_at })) }, 200, false);
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sentence_count,l.sort_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.title`;
+  return json({ version, lessons: rows.map((row) => ({ id: row.id, name: row.title, slug: row.slug, path: row.path, parentId: `${row.language_code}-${row.section_id}`, language: row.language_code, level: row.level, categorySlug: row.category_slug, categoryName: row.category_name, sectionId: row.section_id, sectionNumber: row.section_number, sectionTitle: row.section_title, order: row.sort_order, sentenceCount: row.sentence_count, updatedAt: row.updated_at })) }, 200, false);
 }
 
 async function getLesson(env: Env, url: URL) {
@@ -272,7 +273,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
   try { form = await request.formData(); } catch { return json({ error: "invalid_multipart_form" }, 400); }
   const sectionId = typeof form.get("sectionId") === "string" ? validId(String(form.get("sectionId"))) : null;
   const inputMethod = form.get("inputMethod");
-  const level = typeof form.get("level") === "string" ? String(form.get("level")).trim() : "";
+  const level = normalizeOptionalLevel(form.get("level"));
   if (!sectionId || (inputMethod !== "files" && inputMethod !== "zip") || level.length > 30) return json({ error: "invalid_batch_metadata" }, 422);
   const durations = parseDurationMap(form.get("durations"));
   let source: NormalizedBatchSource;
@@ -426,10 +427,11 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   let form: FormData;
   try { form = await request.formData(); }
   catch { return json({ error: "invalid_multipart_form" }, 400); }
-  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), level = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode");
+  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), levelValue = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode");
+  const level = normalizeOptionalLevel(levelValue);
   const durationMs = typeof durationRaw === "string" ? Number(durationRaw) : NaN;
   if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
-  if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || typeof level !== "string" || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
+  if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
   const slug = slugifyTitle(title.trim()); if (!slug) return json({ error: "title_cannot_create_slug" }, 422);
   const sql = sqlFor(env), sectionRows = await sql`SELECT s.id,c.slug AS category_slug,l.code AS language_code FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`; if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
   const canonicalPath = lessonPath(level || "all", String(sectionRows[0].category_slug), slug);

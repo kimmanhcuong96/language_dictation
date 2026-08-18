@@ -3,6 +3,7 @@ import type { TargetLanguage } from "./types";
 export type AppView =
   | { page: "home" }
   | { page: "english" }
+  | { page: "adminDashboard" }
   | { page: "admin" }
   | { page: "adminManagement" }
   | { page: "canonicalLesson"; path: string }
@@ -14,6 +15,7 @@ export function resolveAppView(pathname: string, hash: string): AppView {
   if (/^\/lessons\/[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+$/u.test(pathname)) return { page: "canonicalLesson", path: pathname };
   if (hash === "#/admin/listening/manage") return { page: "adminManagement" };
   if (hash === "#/admin/listening") return { page: "admin" };
+  if (hash === "#/admin") return { page: "adminDashboard" };
   if (/^#\/learn\/en(?:\/.*)?$/u.test(hash) || /^\/learn\/en(?:\/.*)?$/u.test(pathname)) return { page: "english" };
   const comingMatch = hash.match(/^#\/learn\/(ja|zh)(?:\/.*)?$/u);
   if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja" | "zh" };
@@ -28,6 +30,7 @@ export function resolveAppView(pathname: string, hash: string): AppView {
 export function viewHash(view: Exclude<AppView, { page: "canonicalLesson" }>) {
   return view.page === "home" ? "/"
     : view.page === "english" ? "/learn/en"
+    : view.page === "adminDashboard" ? "/admin"
     : view.page === "admin" ? "/admin/listening"
     : view.page === "adminManagement" ? "/admin/listening/manage"
     : view.page === "coming" || view.page === "library" ? `/learn/${view.language}`

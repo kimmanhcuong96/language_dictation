@@ -15,7 +15,7 @@ Sign in with an email listed in `ADMIN_EMAILS` and open `#/admin/listening`. The
 
 ### AI Import
 
-1. Select the target section and level, enter the title, choose an audio file, and paste the canonical transcript with one sentence per line.
+1. Select the target section, optionally enter a level, enter the title, choose an audio file, and paste the canonical transcript with one sentence per line.
 2. Choose **Process with AI**. Workers AI is used only to map timestamps to the submitted lines. Speech present in the audio but absent from the transcript is ignored, and recognized speech never replaces the Admin's text.
 3. Play each generated segment and correct its text or `start_ms`/`end_ms` values.
 4. Choose **Publish**. The draft is public only after this explicit review step.

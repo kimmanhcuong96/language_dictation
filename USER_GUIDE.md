@@ -102,12 +102,13 @@ Không thêm số thứ tự đầu dòng. Transcript tối đa 50.000 ký tự 
 ## 4. Import lesson
 
 1. Đăng nhập bằng tài khoản nằm trong `ADMIN_EMAILS`.
-2. Mở menu tài khoản → **Quản lý nội dung**, hoặc mở `#/admin/listening`.
-3. Chọn **Nhập bằng AI** hoặc **Nhập không dùng AI**. Nhãn có thể hiển thị bằng `vi`, `en`, `zh` hoặc `ja` theo ngôn ngữ giao diện đang chọn.
+2. Mở menu tài khoản → **Quản lý nội dung** để vào dashboard `#/admin`.
+3. Chọn thẻ **Nhập bài học**. Có thể mở trực tiếp `#/admin/listening` nếu cần.
+4. Chọn **Nhập bằng AI** hoặc **Nhập không dùng AI**. Nhãn có thể hiển thị bằng `vi`, `en`, `zh` hoặc `ja` theo ngôn ngữ giao diện đang chọn.
 
 ### 4.1. Nhập bằng AI
 
-1. Chọn đúng section đích và level.
+1. Chọn đúng section đích. Level là tùy chọn và có thể để trống.
 2. Nhập Title, chọn Audio và dán Transcript theo quy tắc mỗi dòng một câu.
 3. Bấm **Xử lý bằng AI**.
 4. Hệ thống tự tạo slug từ Title, ví dụ `First Snowfall` thành `first-snowfall`.
@@ -117,7 +118,7 @@ AI chỉ map timestamp cho đúng các dòng transcript đã gửi lên. Phần 
 ### 4.2. Nhập không dùng AI bằng MP3 + SRT
 
 1. Chuẩn bị từng cặp file cùng basename, ví dụ `first-snowfall.mp3` và `first-snowfall.srt`.
-2. Chọn section đích và level một lần cho cả batch.
+2. Chọn section đích một lần cho cả batch. Level là tùy chọn và có thể để trống.
 3. Chọn nhiều file MP3/SRT trực tiếp, hoặc chọn một ZIP chứa các cặp file.
 4. Bấm **Kiểm tra và xem trước**; kiểm tra tên bài, slug, duration, số đoạn và lỗi từng item.
 5. Bấm **Xác nhận nhập** để xử lý các item hợp lệ. Một cặp cũng dùng đúng pipeline batch này.
@@ -163,3 +164,8 @@ Thumbnail, PDF, ảnh minh họa và resource khác hiện chưa có UI/API qu�
 - Không xóa audio object đang được lesson sử dụng.
 - Không đưa secret vào frontend hoặc commit `.dev.vars`, `.env`.
 - Sau thay đổi cấu hình, chạy `pnpm build` và `pnpm exec wrangler deploy --dry-run` trước deploy thật.
+## 9. Cài đặt riêng cho bài luyện nghe
+
+Trong một bài nghe, chọn **Tùy chọn phát** để mở hộp thoại cài đặt. Bạn có thể đổi phím nghe lại, phím phát/tạm dừng, bật tự động nghe lại, chọn thời gian chờ giữa các lần nghe, bật gợi ý từ trên điện thoại và bật/tắt mẹo phím tắt. Chọn **Lưu thay đổi** để áp dụng.
+
+Nếu đã đăng nhập, cài đặt được lưu riêng trên tài khoản và dùng lại trên các thiết bị khác. Nếu chưa đăng nhập, cài đặt chỉ được lưu cho profile khách trên trình duyệt hiện tại.

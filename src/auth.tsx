@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LessonProgress, ProgressMap, TargetLanguage } from "./types";
+import type { ListeningPreferences } from "./lib/listeningPreferences";
 
 export interface AccountUser {
   id: string;
@@ -8,6 +9,7 @@ export interface AccountUser {
   avatarUrl: string | null;
   leaderboardVisible: boolean;
   isAdmin: boolean;
+  listeningPreferences: ListeningPreferences;
 }
 
 export interface ActivityEvent {
@@ -71,6 +73,7 @@ interface AuthContextValue {
   syncProgress: (local: ProgressMap, lessonLanguages: Record<string, TargetLanguage>) => Promise<ProgressMap>;
   leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
   saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
+  saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
   adminGetImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
@@ -199,6 +202,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveListeningProgress: async (input) => {
       if (!csrf) throw new Error("not_authenticated");
       await api("/api/listening/progress", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    saveListeningPreferences: async (preferences) => {
+      if (!csrf || !user) throw new Error("not_authenticated");
+      const result = await api<{ preferences: ListeningPreferences }>("/api/listening-preferences", { method:"PATCH", headers:{ "Content-Type":"application/json", "X-CSRF-Token":csrf }, body:JSON.stringify(preferences) });
+      setUser({ ...user, listeningPreferences:result.preferences });
+      return result.preferences;
     },
     adminImportLesson: async (form) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");

@@ -6,6 +6,7 @@ import { adminImportStatus, adminImportT, translateAdminImportError, type AdminI
 import { NON_AI_IMPORT_LIMITS } from "../../lib/nonAiImport";
 import { readAudioDuration } from "../../lib/media";
 import type { UiLocale } from "../../types";
+import { AdminLayout } from "./AdminLayout";
 
 interface SectionOption { section_id: string; category_name: string; section_title: string; language_code: string }
 interface ReviewSentence { id: string; position: number; text: string; startMs: number; endMs: number }
@@ -178,7 +179,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
 }
 
 function AdminShell({ onHome, locale, children }: { onHome: () => void; locale: UiLocale; children: React.ReactNode }) {
-  return <div className="content-shell"><header><button className="back-link" onClick={onHome}>{adminImportT(locale, "home")}</button><h1>{adminImportT(locale, "pageTitle")}</h1></header><main>{children}</main></div>;
+  return <AdminLayout locale={locale} title={adminImportT(locale, "pageTitle")} onSiteHome={onHome}>{children}</AdminLayout>;
 }
 
 function SectionAndLevel({ sections, sectionId, level, onSection, onLevel, locale }: { sections: SectionOption[]; sectionId: string; level: string; onSection: (value: string) => void; onLevel: (value: string) => void; locale: UiLocale }) {
