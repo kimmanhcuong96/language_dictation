@@ -5,7 +5,6 @@ import { normalizeOptionalLevel } from "../src/lib/importMetadata";
 import { allocateImportCandidateSlugs, describeImportResource, NON_AI_IMPORT_LIMITS, pairImportResources, parseNonAiSrt } from "../src/lib/nonAiImport";
 import { getNormalizer } from "../src/lib/dictation";
 import { slugifyTitle, uniqueSlug } from "../src/lib/slug";
-import { resolveObjectRange } from "../src/lib/httpRange";
 import { alignLessonImport } from "./listening-import";
 import { routeListeningTranslations, scheduleAutomaticTranslations } from "./listening-translations";
 
@@ -201,19 +200,16 @@ async function serveAudio(request: Request, env: Env, url: URL) {
   if (request.method === "HEAD") {
     const object = await env.LISTENING_AUDIO.head(key);
     if (!object) return json({ error: "audio_not_found" }, 404);
-    const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "bytes"); headers.set("content-length", String(object.size)); headers.set("cache-control", "public, max-age=86400");
+    const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "none"); headers.set("content-length", String(object.size)); headers.set("cache-control", "public, max-age=31536000, immutable");
     return new Response(null, { status: 200, headers });
   }
-  const options: R2GetOptions = request.headers.has("Range") ? { range: request.headers, onlyIf: request.headers } : { onlyIf: request.headers };
-  const object = await env.LISTENING_AUDIO.get(key, options);
+  // Audio files are small and versioned by lesson UUID. Ignore Range deliberately so a cold playback streams one full R2 object in one 200 response.
+  const object = await env.LISTENING_AUDIO.get(key, { onlyIf: request.headers });
   if (!object) return json({ error: "audio_not_found" }, 404);
-  const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "bytes"); headers.set("cache-control", "public, max-age=86400");
+  const headers = new Headers(); object.writeHttpMetadata(headers); headers.set("etag", object.httpEtag); headers.set("accept-ranges", "none"); headers.set("cache-control", "public, max-age=31536000, immutable");
   if (!("body" in object)) return new Response(null, { status: 304, headers });
-  const range = resolveObjectRange(object.range, object.size);
-  const status = range ? 206 : 200;
-  if (range) { headers.set("content-range", `bytes ${range.start}-${range.start + range.length - 1}/${object.size}`); headers.set("content-length", String(range.length)); }
-  else headers.set("content-length", String(object.size));
-  return new Response(object.body, { status, headers });
+  headers.set("content-length", String(object.size));
+  return new Response(object.body, { status: 200, headers });
 }
 
 async function getProgress(env: Env, session: ListeningSession | null, url: URL) {
@@ -667,7 +663,7 @@ async function persistImportedLesson(env:Env,sql:TransactionSql,session:Listenin
   const extension=input.audioFileName.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu,"")||"mp3";
   const audioKey=input.audioKey??`listening/${input.languageCode}/lessons/${lessonId}/audio.${extension}`;
   try{
-    await env.LISTENING_AUDIO.put(audioKey,input.audio,{httpMetadata:{contentType:input.audio.type||"audio/mpeg",cacheControl:"public, max-age=86400"}});
+    await env.LISTENING_AUDIO.put(audioKey,input.audio,{httpMetadata:{contentType:input.audio.type||"audio/mpeg",cacheControl:"public, max-age=31536000, immutable"}});
     const rejectedSlugs=new Set<string>();
     for(let attempt=0;attempt<100;attempt+=1){
       const slug=await findAvailableLessonSlug(sql,input.sectionId,input.categorySlug,input.level,input.slug,rejectedSlugs),canonicalPath=lessonPath(input.level||"all",input.categorySlug,slug),finalJobStatus=input.publish?"PUBLISHED":"READY_FOR_REVIEW";
