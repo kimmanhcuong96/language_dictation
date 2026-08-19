@@ -70,8 +70,8 @@ function Loading({locale="en"}:{locale?:UiLocale}){return <div className="conten
 function LessonAudioPlaceholder({status,retry,locale}:{status:"loading"|"error"|"missing";retry:()=>void;locale:UiLocale}){return <div className={`lesson-audio-state ${status}`} role={status==="loading"?"status":"alert"}><span>{translate(locale,status==="loading"?"loading":"audioUnavailable")}</span>{status==="error"&&<button type="button" onClick={retry}>{translate(locale,"retry")}</button>}</div>;}
 
 function LessonCompletionDialog({locale,lessonTitle,nextLessonName,busy,error,onNext,onRepeat,onAllLessons,onDismiss}:{locale:UiLocale;lessonTitle:string;nextLessonName?:string;busy:boolean;error:boolean;onNext:()=>void;onRepeat:()=>void;onAllLessons:()=>void;onDismiss:()=>void}){
-  const dialogRef=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{const dialog=dialogRef.current;if(!dialog)return;if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");return()=>{if(dialog.open)dialog.close();};},[]);
+  const dialogRef=useRef<HTMLDialogElement>(null),nextButtonRef=useRef<HTMLButtonElement>(null);
+  useEffect(()=>{const dialog=dialogRef.current;if(!dialog)return;let focusFrame:number|undefined;if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");focusFrame=requestAnimationFrame(()=>nextButtonRef.current?.focus());return()=>{if(focusFrame!==undefined)cancelAnimationFrame(focusFrame);if(dialog.open)dialog.close();};},[]);
   return <dialog ref={dialogRef} className="lesson-completion-dialog" aria-labelledby="lesson-completion-title" aria-describedby="lesson-completion-message" onCancel={event=>{event.preventDefault();onDismiss();}}>
     <button type="button" className="lesson-completion-close" aria-label={translate(locale,"closeDialog")} onClick={onDismiss}><X size={18}/></button>
     <div className="lesson-completion-icon" aria-hidden="true"><Star size={27} fill="currentColor"/></div>
@@ -81,7 +81,7 @@ function LessonCompletionDialog({locale,lessonTitle,nextLessonName,busy,error,on
     {error&&<p className="lesson-completion-error" role="alert">{lessonT(locale,"resetLessonError")}</p>}
     <div className="lesson-completion-actions">
       <button type="button" disabled={busy} onClick={onRepeat}><RotateCcw size={16}/>{lessonCompletionT(locale,"repeatLesson")}</button>
-      {nextLessonName&&<button type="button" className="primary-button" autoFocus disabled={busy} onClick={onNext}><span>{lessonCompletionT(locale,"nextLesson")}</span><small>{nextLessonName}</small><ArrowRight size={17}/></button>}
+      {nextLessonName&&<button ref={nextButtonRef} type="button" className="primary-button" autoFocus disabled={busy} onClick={onNext}><span>{lessonCompletionT(locale,"nextLesson")}</span><small>{nextLessonName}</small><ArrowRight size={17}/></button>}
     </div>
     <button type="button" className="lesson-completion-all" disabled={busy} onClick={onAllLessons}>{lessonCompletionT(locale,"allLessons")}</button>
   </dialog>;
