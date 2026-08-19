@@ -35,9 +35,12 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "GET" && url.pathname === "/api/listening/lessons") return getLessons(env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/lessons/by-path") return getLessonByPath(env, url);
   if (request.method === "GET" && /^\/api\/listening\/lessons\/[\w-]+$/u.test(url.pathname)) return getLesson(env, url);
+  if (request.method === "GET" && url.pathname === "/api/listening/lesson-states") return getLessonStates(env, session, url);
   if (request.method === "GET" && url.pathname === "/api/listening/progress") return getProgress(env, session, url);
   if (request.method === "POST" && url.pathname === "/api/listening/progress") return mutationValid ? saveProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && url.pathname === "/api/listening/progress") return mutationValid ? resetProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "DELETE" && url.pathname === "/api/listening/progress/lesson") return mutationValid ? resetLessonProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
+  if ((request.method === "PUT" || request.method === "DELETE") && /^\/api\/listening\/lessons\/[\w-]+\/favorite$/u.test(url.pathname)) return mutationValid ? setLessonFavorite(request, env, session, url) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/bootstrap") return isAdmin(env, session) ? getAdminBootstrap(env) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) ? getAdminLessons(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getAdminLesson(env, url) : json({ error: "forbidden" }, 403);
@@ -181,6 +184,44 @@ async function getProgress(env: Env, session: ListeningSession | null, url: URL)
   return json({ lesson: lessonRows[0] ?? null, sentences: sentenceRows });
 }
 
+async function getLessonStates(env: Env, session: ListeningSession | null, url: URL) {
+  const language = url.searchParams.get("language") ?? "en";
+  if (!(["en", "zh", "ja"] as const).includes(language as "en" | "zh" | "ja")) return json({ error: "invalid_language" }, 422);
+  const userId = session?.id ?? "";
+  const rows = await sqlFor(env)`
+    SELECT lesson.id AS lesson_id,
+      COALESCE(stars.star_count,0)::int AS star_count,
+      (user_star.user_id IS NOT NULL) AS is_starred,
+      COALESCE(progress.is_completed,false) AS is_completed
+    FROM listening_lessons lesson
+    JOIN listening_sections section ON section.id=lesson.section_id
+    JOIN listening_categories category ON category.id=section.category_id
+    JOIN languages source_language ON source_language.id=category.language_id
+    LEFT JOIN (
+      SELECT lesson_id,COUNT(*)::int AS star_count
+      FROM listening_lesson_favorites
+      GROUP BY lesson_id
+    ) stars ON stars.lesson_id=lesson.id
+    LEFT JOIN listening_lesson_favorites user_star ON user_star.lesson_id=lesson.id AND user_star.user_id=${userId}
+    LEFT JOIN listening_lesson_progress progress ON progress.lesson_id=lesson.id AND progress.user_id=${userId}
+    WHERE source_language.code=${language} AND source_language.is_enabled=true
+      AND category.is_published=true AND section.is_published=true AND lesson.is_published=true
+    ORDER BY category.sort_order,section.sort_order,lesson.sort_order,lesson.title`;
+  return json({ lessons: rows.map(row => ({ lessonId:row.lesson_id,starCount:Number(row.star_count),isStarred:Boolean(row.is_starred),isCompleted:Boolean(row.is_completed) })) });
+}
+
+async function setLessonFavorite(request: Request, env: Env, session: ListeningSession | null, url: URL) {
+  if (!session) return json({ error: "unauthorized" }, 401);
+  const lessonId = validId(url.pathname.match(/^\/api\/listening\/lessons\/([\w-]+)\/favorite$/u)?.[1] ?? null);
+  if (!lessonId) return json({ error: "invalid_lesson" }, 422);
+  const sql = sqlFor(env), lessonRows = await sql`SELECT 1 FROM listening_lessons WHERE id=${lessonId} AND is_published=true`;
+  if (!lessonRows.length) return json({ error: "not_found" }, 404);
+  if (request.method === "PUT") await sql`INSERT INTO listening_lesson_favorites(user_id,lesson_id) VALUES(${session.id},${lessonId}) ON CONFLICT(user_id,lesson_id) DO NOTHING`;
+  else await sql`DELETE FROM listening_lesson_favorites WHERE user_id=${session.id} AND lesson_id=${lessonId}`;
+  const countRows = await sql`SELECT COUNT(*)::int AS star_count FROM listening_lesson_favorites WHERE lesson_id=${lessonId}`;
+  return json({ lessonId, starCount:Number(countRows[0]?.star_count ?? 0), isStarred:request.method === "PUT" });
+}
+
 async function saveProgress(request: Request, env: Env, session: ListeningSession | null) {
   if (!session) return json({ error: "unauthorized" }, 401);
   let body: Record<string, unknown>;
@@ -259,6 +300,33 @@ async function resetProgress(request: Request, env: Env, session: ListeningSessi
         updated_at=now()
     FROM counts
     WHERE user_id=${session.id} AND lesson_id=${lessonId}`;
+  return json({ ok: true });
+}
+
+async function resetLessonProgress(request: Request, env: Env, session: ListeningSession | null) {
+  if (!session) return json({ error: "unauthorized" }, 401);
+  let body: Record<string, unknown>;
+  try { body = await boundedJson<Record<string, unknown>>(request); }
+  catch (error) { return error instanceof RequestBodyError ? json({ error: error.message }, error.status) : json({ error: "invalid_json" }, 400); }
+  const lessonId = typeof body.lessonId === "string" ? validId(body.lessonId) : null;
+  if (!lessonId) return json({ error: "invalid_lesson" }, 422);
+  const sql = sqlFor(env), lessonRows = await sql`SELECT 1 FROM listening_lessons WHERE id=${lessonId}`;
+  if (!lessonRows.length) return json({ error: "not_found" }, 404);
+  await sql`
+    WITH lesson_sentences AS (
+      SELECT id FROM listening_sentences WHERE lesson_id=${lessonId}
+    ), removed_sentences AS (
+      DELETE FROM listening_sentence_progress
+      WHERE user_id=${session.id} AND sentence_id IN (SELECT id FROM lesson_sentences)
+      RETURNING sentence_id
+    ), removed_lesson AS (
+      DELETE FROM listening_lesson_progress
+      WHERE user_id=${session.id} AND lesson_id=${lessonId}
+      RETURNING lesson_id
+    )
+    SELECT
+      (SELECT COUNT(*)::int FROM removed_sentences) AS removed_sentences,
+      EXISTS(SELECT 1 FROM removed_lesson) AS removed_lesson`;
   return json({ ok: true });
 }
 

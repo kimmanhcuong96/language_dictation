@@ -80,6 +80,8 @@ interface AuthContextValue {
   leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
   saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
   resetListeningProgress: (input: { lessonId: string; sentenceId: string; position: number }) => Promise<void>;
+  resetListeningLessonProgress: (lessonId: string) => Promise<void>;
+  setListeningLessonFavorite: (lessonId: string, favorite: boolean) => Promise<{ lessonId: string; starCount: number; isStarred: boolean }>;
   saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
@@ -222,6 +224,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resetListeningProgress: async (input) => {
       if (!csrf) throw new Error("not_authenticated");
       await api("/api/listening/progress", { method: "DELETE", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    resetListeningLessonProgress: async (lessonId) => {
+      if (!csrf) throw new Error("not_authenticated");
+      await api("/api/listening/progress/lesson", { method: "DELETE", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ lessonId }) });
+    },
+    setListeningLessonFavorite: async (lessonId, favorite) => {
+      if (!csrf) throw new Error("not_authenticated");
+      return api(`/api/listening/lessons/${encodeURIComponent(lessonId)}/favorite`, { method: favorite ? "PUT" : "DELETE", headers: { "X-CSRF-Token": csrf } });
     },
     saveListeningPreferences: async (preferences) => {
       if (!csrf || !user) throw new Error("not_authenticated");
