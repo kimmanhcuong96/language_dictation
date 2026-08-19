@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { findActiveTranscriptIndex } from "./transcriptTracking";
+import { describe, expect, it, vi } from "vitest";
+import { findActiveTranscriptIndex, seekAndPlayTranscript } from "./transcriptTracking";
 
 const lines = [
   { start_ms: 0, end_ms: 1_000 },
@@ -24,5 +24,20 @@ describe("findActiveTranscriptIndex", () => {
   it("includes the final line end but excludes later playback", () => {
     expect(findActiveTranscriptIndex(lines, 3_000)).toBe(2);
     expect(findActiveTranscriptIndex(lines, 3_001)).toBe(-1);
+  });
+});
+
+describe("seekAndPlayTranscript", () => {
+  it("seeks to the sentence start and starts the existing audio", async () => {
+    const audio = { currentTime:0, play:vi.fn().mockResolvedValue(undefined) };
+    await expect(seekAndPlayTranscript(audio, 2_500)).resolves.toBe(true);
+    expect(audio.currentTime).toBe(2.5);
+    expect(audio.play).toHaveBeenCalledOnce();
+  });
+
+  it("ignores invalid timestamps", async () => {
+    const audio = { currentTime:0, play:vi.fn().mockResolvedValue(undefined) };
+    await expect(seekAndPlayTranscript(audio, -1)).resolves.toBe(false);
+    expect(audio.play).not.toHaveBeenCalled();
   });
 });

@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
-    login: () => { window.location.assign(`/api/auth/google?returnTo=${encodeURIComponent(window.location.hash || "#/")}`); },
+    login: () => { window.location.assign(`/api/auth/google?returnTo=${encodeURIComponent(window.location.pathname)}`); },
     logout: async () => {
       if (csrf) await api("/api/logout", { method: "POST", headers: { "X-CSRF-Token": csrf } });
       setUser(null); setCsrf(null);

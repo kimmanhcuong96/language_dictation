@@ -151,7 +151,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
   };
 
   return <AdminShell onHome={onHome} locale={locale}>
-    <p><a href="#/admin/listening/manage">{t("manageLessons")}</a></p>
+    <p><a href="/admin/listening/manage">{t("manageLessons")}</a></p>
     <div className="import-mode-tabs"><button className={mode === "ai" ? "active" : ""} onClick={() => setMode("ai")}>{t("aiImport")}</button><button className={mode === "non_ai" ? "active" : ""} onClick={() => setMode("non_ai")}>{t("nonAiImport")}</button></div>
     {error && <p className="form-error" role="alert">{translateAdminImportError(locale, error.value, error.fallback)}</p>}
     {mode === "ai" ? <section>

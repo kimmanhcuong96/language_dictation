@@ -12,3 +12,10 @@ export function findActiveTranscriptIndex(lines: TimedTranscriptLine[], currentT
     return currentTimeMs >= line.start_ms && (currentTimeMs < line.end_ms || (isLastLine && currentTimeMs <= line.end_ms));
   });
 }
+
+export async function seekAndPlayTranscript(audio: Pick<HTMLAudioElement, "currentTime" | "play">, startMs: number): Promise<boolean> {
+  if (!Number.isFinite(startMs) || startMs < 0) return false;
+  audio.currentTime = startMs / 1000;
+  await audio.play();
+  return true;
+}

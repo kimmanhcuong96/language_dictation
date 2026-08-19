@@ -192,12 +192,17 @@ h1,h2,h3 { font-family: "Manrope", sans-serif; }
 .lesson-mode-tabs .transcript-tab.active{border-color:#16a66a;border-bottom-color:#16a66a;background:#16a66a;color:#fff;box-shadow:0 5px 14px #16a66a40}
 .lesson-practice-card{border-radius:12px}
 .lesson-practice-card.full-transcript-view>audio{width:100%;margin-bottom:20px;accent-color:#16a66a}
-.lesson-practice-card.full-transcript-view ol{max-width:940px;margin:0;padding:0;display:grid;gap:3px;list-style:none}
+.lesson-practice-card.full-transcript-view ol{width:min(940px,100%);margin:0 auto;padding:0;display:grid;gap:3px;list-style:none;text-align:left}
 .lesson-practice-card.full-transcript-view li{min-height:43px;padding:10px 12px;display:flex;align-items:flex-start;gap:13px;border-radius:9px;color:var(--ink);transition:background .16s,color .16s,box-shadow .16s}
 .lesson-practice-card.full-transcript-view li.current{background:#dcf8e9;color:#105f3f;box-shadow:inset 3px 0 #18ad70}
 .lesson-practice-card.full-transcript-view li>span{width:25px;flex:0 0 auto;padding-top:3px;color:#819088;font:750 11px "Manrope"}
 .lesson-practice-card.full-transcript-view li.current>span{color:#168458}
 .lesson-practice-card.full-transcript-view li>p{margin:0;font-size:15px;line-height:1.5}
+.transcript-sentence{width:100%;padding:0;display:flex;align-items:flex-start;gap:13px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.transcript-sentence:hover p{color:var(--brand-strong);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.transcript-sentence>span{width:25px;flex:0 0 auto;padding-top:3px;color:#819088;font:750 11px "Manrope"}.transcript-sentence>p{margin:0;font-size:15px;line-height:1.5}
+.practice-audio .segment-player button,.practice-audio .segment-player input[type="range"]{cursor:pointer}.practice-audio .segment-player button:disabled,.practice-audio .segment-player input[type="range"]:disabled{cursor:not-allowed}
+.proper-noun-suggestions{margin-top:13px;display:flex;align-items:center;flex-wrap:wrap;gap:7px;color:var(--muted);font-size:11px}.proper-noun-suggestions>span{margin-right:2px}.proper-noun-suggestions>b{padding:5px 9px;border:1px solid #d7e4dc;border-radius:999px;background:#f3faf6;color:var(--brand-strong);font:700 12px "Manrope"}
 @media(max-width:650px){.lesson-mode-tabs{width:100%}.lesson-mode-tabs button{flex:1;padding:0 12px}.lesson-practice-card.full-transcript-view li{padding:9px 8px}.lesson-practice-card.full-transcript-view li>p{font-size:14px}}
 
 .next-lesson-card{max-width:700px;min-height:96px;margin-top:14px;padding:17px 18px;display:flex;align-items:center;gap:15px;border:1px solid #d7e3dc;border-radius:12px;background:linear-gradient(135deg,#fff 0%,#f3fbf6 100%);color:var(--ink);text-decoration:none;box-shadow:0 5px 16px #233b2d0b;transition:transform .18s,border-color .18s,box-shadow .18s}

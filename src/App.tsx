@@ -43,7 +43,7 @@ import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
 import { AdminDashboardPage } from "./components/admin/AdminDashboardPage";
 import { TranslationReviewPage } from "./components/admin/TranslationReviewPage";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
-import { navigateToHash, navigateToPath, resolveAppView, viewHash, type AppView } from "./router";
+import { migrateLegacyHashRoute, navigateToPath, resolveAppView, viewPath, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
 import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
 
@@ -62,11 +62,10 @@ function App() {
   });
 
   useEffect(() => {
+    migrateLegacyHashRoute(window.location.hash);
     const onLocationChange = () => setView(getInitialView());
-    window.addEventListener("hashchange", onLocationChange);
     window.addEventListener("popstate", onLocationChange);
     return () => {
-      window.removeEventListener("hashchange", onLocationChange);
       window.removeEventListener("popstate", onLocationChange);
     };
   }, []);
@@ -86,7 +85,7 @@ function App() {
 
   const navigate = (next: View) => {
     if (next.page === "canonicalLesson") navigateToPath(next.path);
-    else navigateToHash(viewHash(next));
+    else navigateToPath(viewPath(next));
     setView(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -123,7 +122,7 @@ function App() {
   );
 }
 
-function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToHash(`/learn/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
+function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToPath(`/learn/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -264,9 +263,9 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
         <nav>
           <p className="nav-label">{t("learning")}</p>
           <button className="nav-item" onClick={onHome}><Home size={19} />{t("home")}</button>
-          <a className="nav-item active" href={`#/learn/${language}`}><Library size={19} />{t("library")}<span className="count">{languageLessons.length}</span></a>
-          <a className="nav-item" href="#progress"><BarChart3 size={19} />{t("progress")}</a>
-          <a className="nav-item" href="#saved"><Heart size={19} />{t("saved")}</a>
+          <a className="nav-item active" href={`/learn/${language}`}><Library size={19} />{t("library")}<span className="count">{languageLessons.length}</span></a>
+          <button className="nav-item" type="button"><BarChart3 size={19} />{t("progress")}</button>
+          <button className="nav-item" type="button"><Heart size={19} />{t("saved")}</button>
           <LeaderboardLauncher locale={locale} nav />
           <p className="nav-label">{languageMeta.flag} {languageMeta.nativeName}</p>
           <button className="nav-item topic active-topic"><span className="topic-dot coral" />{t("shortStories")}</button>
@@ -541,7 +540,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     {open && <div className="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
-      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin"); setOpen(false); }}><Library size={16} />{t("contentManagement")}</button>}
+      {auth.user.isAdmin && <button onClick={() => { navigateToPath("/admin"); setOpen(false); }}><Library size={16} />{t("contentManagement")}</button>}
       <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}

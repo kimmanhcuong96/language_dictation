@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeImportResource, normalizeImportBasename, pairImportResources, parseNonAiSrt } from "./nonAiImport";
+import { allocateImportCandidateSlugs, describeImportResource, normalizeImportBasename, pairImportResources, parseNonAiSrt } from "./nonAiImport";
 
 describe("non-AI batch import", () => {
   it("pairs MP3 and SRT resources by normalized basename", () => {
@@ -25,9 +25,18 @@ describe("non-AI batch import", () => {
     expect(result.find((item) => item.lessonName === "same")?.errors).toContain("duplicate_audio_file");
   });
 
-  it("rejects duplicate generated slugs", () => {
-    const result = pairImportResources(["One lesson.mp3", "One lesson.srt", "One--lesson.mp3", "One--lesson.srt"].map((name) => describeImportResource(name, 100)));
-    expect(result.filter((item) => item.errors.includes("duplicate_slug_in_batch"))).toHaveLength(2);
+  it("allocates sequential slugs when separate ZIP resources generate the same slug", () => {
+    const candidates = pairImportResources(["One lesson.mp3", "One lesson.srt", "One--lesson.mp3", "One--lesson.srt"].map((name) => describeImportResource(name, 100)));
+    const result = allocateImportCandidateSlugs(candidates, () => false);
+    expect(result.map((item) => item.slug)).toEqual(["one-lesson", "one-lesson-1"]);
+    expect(result.every((item) => item.errors.length === 0)).toBe(true);
+  });
+
+  it("continues after slugs already reserved by persisted lessons", () => {
+    const candidates = pairImportResources(["One lesson.mp3", "One lesson.srt", "One--lesson.mp3", "One--lesson.srt"].map((name) => describeImportResource(name, 100)));
+    const existing = new Set(["one-lesson", "one-lesson-1"]);
+    const result = allocateImportCandidateSlugs(candidates, (slug) => existing.has(slug));
+    expect(result.map((item) => item.slug)).toEqual(["one-lesson-2", "one-lesson-3"]);
   });
 
   it("derives understandable lesson names and validates standard SRT", () => {

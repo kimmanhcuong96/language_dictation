@@ -1,4 +1,5 @@
 import type { TargetLanguage } from "../types";
+import { displayEnglishComparisonToken, normalizeEnglishForComparison } from "./englishNormalization";
 
 export type TokenStatus = "correct" | "near-correct" | "incorrect" | "hidden";
 export interface DictationToken { text: string; typed?: string; status: TokenStatus; }
@@ -6,11 +7,8 @@ export interface DictationResult { correct: boolean; tokens: DictationToken[]; f
 
 export interface DictationNormalizer { normalize(text: string): string; tokenize(text: string): string[]; }
 
-const sentencePunctuation = /^[.!?;,:]+|[.!?;,:]+$/gu;
 const english: DictationNormalizer = {
-  normalize(text) {
-    return text.normalize("NFKC").toLocaleLowerCase().replace(/[’‘]/gu, "'").replace(/[“”"]/gu, "").replace(/\s+/gu, " ").trim().replace(sentencePunctuation, "").trim();
-  },
+  normalize: normalizeEnglishForComparison,
   tokenize(text) { const value = this.normalize(text); return value ? value.split(/\s+/u).filter(Boolean) : []; },
 };
 
@@ -40,12 +38,12 @@ export const isNearCorrect = (actual: string, expected: string) => {
 export function evaluateAnswer({ expected, actual, language = "en" }: { expected: string; actual: string; language?: TargetLanguage }): DictationResult {
   const normalizer = getNormalizer(language), expectedTokens = normalizer.tokenize(expected), actualTokens = normalizer.tokenize(actual);
   let firstIncorrectIndex: number | null = null;
-  const tokens = expectedTokens.map((text, index) => {
+  const tokens = expectedTokens.map((comparisonText, index) => {
     const typed = actualTokens[index];
-    const status: TokenStatus = typed === text ? "correct" : typed && isNearCorrect(typed, text) ? "near-correct" : "incorrect";
+    const status: TokenStatus = typed === comparisonText ? "correct" : typed && isNearCorrect(typed, comparisonText) ? "near-correct" : "incorrect";
     if (status !== "correct" && firstIncorrectIndex === null) firstIncorrectIndex = index;
     const visibleStatus: TokenStatus = firstIncorrectIndex !== null && index > firstIncorrectIndex ? "hidden" : status;
-    return { text, typed, status: visibleStatus };
+    return { text:language === "en" ? displayEnglishComparisonToken(comparisonText) : comparisonText, typed, status: visibleStatus };
   });
   return { correct: firstIncorrectIndex === null && actualTokens.length === expectedTokens.length, tokens, firstIncorrectIndex };
 }

@@ -2,7 +2,7 @@ import { FileUp, Languages, Library } from "lucide-react";
 import { adminTranslationT } from "../../adminTranslationI18n";
 import { adminSystemT } from "../../adminSystemI18n";
 import { useAuth } from "../../auth";
-import { navigateToHash } from "../../router";
+import { navigateToPath } from "../../router";
 import type { UiLocale } from "../../types";
 import { AdminLayout } from "./AdminLayout";
 
@@ -20,6 +20,6 @@ export function AdminDashboardPage({ locale, onSiteHome }: { locale: UiLocale; o
 
   return <AdminLayout locale={locale} title={title} dashboard onSiteHome={onSiteHome}>
     <p className="admin-dashboard-intro">{adminSystemT(locale, "dashboardIntro")}</p>
-    <div className="admin-dashboard-grid">{cards.map(card => <button className="admin-feature-card" type="button" key={card.path} onClick={() => navigateToHash(card.path)}><span className="admin-feature-icon"><card.icon size={23} /></span><strong>{card.title}</strong><p>{card.description}</p><em>{adminSystemT(locale, "manage")}</em></button>)}</div>
+    <div className="admin-dashboard-grid">{cards.map(card => <button className="admin-feature-card" type="button" key={card.path} onClick={() => navigateToPath(card.path)}><span className="admin-feature-icon"><card.icon size={23} /></span><strong>{card.title}</strong><p>{card.description}</p><em>{adminSystemT(locale, "manage")}</em></button>)}</div>
   </AdminLayout>;
 }

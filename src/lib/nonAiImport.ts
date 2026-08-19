@@ -1,5 +1,5 @@
 import { parseSrt, validateAlignedSentences, type AlignedSentence } from "./ingestion";
-import { slugifyTitle } from "./slug";
+import { slugifyTitle, uniqueSlug } from "./slug";
 
 export const NON_AI_IMPORT_LIMITS = {
   maxLessons: 100,
@@ -23,6 +23,19 @@ export interface ImportPairCandidate {
   audioName?: string;
   srtName?: string;
   errors: string[];
+}
+
+export function allocateImportCandidateSlugs(
+  candidates: ImportPairCandidate[],
+  isUsed: (candidate: string) => boolean,
+): ImportPairCandidate[] {
+  const reserved = new Set<string>();
+  return candidates.map((candidate) => {
+    if (!candidate.slug || candidate.errors.length) return { ...candidate };
+    const slug = uniqueSlug(candidate.slug, (value) => reserved.has(value) || isUsed(value));
+    reserved.add(slug);
+    return { ...candidate, slug };
+  });
 }
 
 export function describeImportResource(name: string, size: number): ImportResourceDescriptor {
@@ -72,9 +85,6 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
     if (!candidate.audioName) candidate.errors.push("missing_mp3");
     if (!candidate.srtName) candidate.errors.push("missing_srt");
   }
-  const bySlug = new Map<string, ImportPairCandidate[]>();
-  for (const candidate of candidates) bySlug.set(candidate.slug, [...(bySlug.get(candidate.slug) ?? []), candidate]);
-  for (const duplicates of bySlug.values()) if (duplicates.length > 1) for (const candidate of duplicates) candidate.errors.push("duplicate_slug_in_batch");
   return [...candidates, ...unsupported].map((candidate) => ({ ...candidate, errors: [...new Set(candidate.errors)] }));
 }
 
