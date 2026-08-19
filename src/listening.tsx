@@ -12,6 +12,7 @@ import { evaluateAnswer } from "./lib/dictation";
 import { matchesReplayShortcut, shortcutLabel, type ListeningPreferences } from "./lib/listeningPreferences";
 import { loadLocalListeningPreferences, saveLocalListeningPreferences } from "./lib/listeningPreferencesStorage";
 import { lessonT } from "./lessonI18n";
+import { lessonCompletionT } from "./lessonCompletionI18n";
 import { buildLessonAudioRequestUrl } from "./lib/lessonAudioRequest";
 import { lessonManagementT } from "./lessonManagementI18n";
 import { findNextLesson, loadLessonManifest, type LessonManifest } from "./lib/lessonManifest";
@@ -68,6 +69,24 @@ function Shell({children,onHome,title,locale="en",breadcrumbs,wide=false}:{child
 function Loading({locale="en"}:{locale?:UiLocale}){return <div className="content-state" role="status">{translate(locale,"loading")}</div>;} function LoadError({retry,locale="en"}:{retry:()=>void;locale?:UiLocale}){return <div className="content-state" role="alert"><p>{translate(locale,"loadError")}</p><button onClick={retry}>{translate(locale,"retry")}</button></div>;}
 function LessonAudioPlaceholder({status,retry,locale}:{status:"loading"|"error"|"missing";retry:()=>void;locale:UiLocale}){return <div className={`lesson-audio-state ${status}`} role={status==="loading"?"status":"alert"}><span>{translate(locale,status==="loading"?"loading":"audioUnavailable")}</span>{status==="error"&&<button type="button" onClick={retry}>{translate(locale,"retry")}</button>}</div>;}
 
+function LessonCompletionDialog({locale,lessonTitle,nextLessonName,busy,error,onNext,onRepeat,onAllLessons,onDismiss}:{locale:UiLocale;lessonTitle:string;nextLessonName?:string;busy:boolean;error:boolean;onNext:()=>void;onRepeat:()=>void;onAllLessons:()=>void;onDismiss:()=>void}){
+  const dialogRef=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{const dialog=dialogRef.current;if(!dialog)return;if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");return()=>{if(dialog.open)dialog.close();};},[]);
+  return <dialog ref={dialogRef} className="lesson-completion-dialog" aria-labelledby="lesson-completion-title" aria-describedby="lesson-completion-message" onCancel={event=>{event.preventDefault();onDismiss();}}>
+    <button type="button" className="lesson-completion-close" aria-label={translate(locale,"closeDialog")} onClick={onDismiss}><X size={18}/></button>
+    <div className="lesson-completion-icon" aria-hidden="true"><Star size={27} fill="currentColor"/></div>
+    <p className="lesson-completion-eyebrow">{lessonTitle}</p>
+    <h2 id="lesson-completion-title">{lessonCompletionT(locale,"title")}</h2>
+    <p id="lesson-completion-message">{lessonCompletionT(locale,"message")}</p>
+    {error&&<p className="lesson-completion-error" role="alert">{lessonT(locale,"resetLessonError")}</p>}
+    <div className="lesson-completion-actions">
+      {nextLessonName&&<button type="button" className="primary-button" autoFocus disabled={busy} onClick={onNext}><span>{lessonCompletionT(locale,"nextLesson")}</span><small>{nextLessonName}</small><ArrowRight size={17}/></button>}
+      <button type="button" disabled={busy} onClick={onRepeat}><RotateCcw size={16}/>{lessonCompletionT(locale,"repeatLesson")}</button>
+    </div>
+    <button type="button" className="lesson-completion-all" disabled={busy} onClick={onAllLessons}>{lessonCompletionT(locale,"allLessons")}</button>
+  </dialog>;
+}
+
 function CategoryList({manifest,locale,onHome}:{manifest?:LessonManifest;locale:UiLocale;onHome:()=>void}){
   const [categories,setCategories]=useState<Category[]>([]);
   useEffect(()=>{let active=true;void getJson<{categories:Category[]}>("/api/listening/categories?language=en").then(result=>{if(active)setCategories(result.categories);}).catch(()=>undefined);return()=>{active=false;};},[]);
@@ -89,7 +108,7 @@ function SectionList({manifest,categorySlug,lessonStates,locale,onHome}:{manifes
   const categoryName=sections?.[0]?.lessons[0]?.categoryName??formatCategory(categorySlug);
   const filtering=Boolean(query.trim())||level!=="all";
   useEffect(()=>{setQuery("");setLevel("all");setOpenSections(new Set());},[categorySlug]);
-  useEffect(()=>{if(!filtering||!filteredSections)return;setOpenSections(new Set(filteredSections.map(section=>section.id)));},[query,level]);
+  useEffect(()=>{if(!filtering){setOpenSections(new Set());return;}if(!filteredSections)return;setOpenSections(new Set(filteredSections.map(section=>section.id)));},[query,level]);
   const toggle=(sectionId:string)=>setOpenSections(current=>{const next=new Set(current);if(next.has(sectionId))next.delete(sectionId);else next.add(sectionId);return next;});
   const clearFilters=()=>{setQuery("");setLevel("all");};
   return <Shell wide locale={locale} onHome={onHome} title={categoryName} breadcrumbs={[{label:translate(locale,"allTopics"),onClick:()=>navigate("/en")},{label:categoryName}]}>
@@ -112,13 +131,17 @@ function loadGuest(lessonId:string){try{return new Set<string>(JSON.parse(localS
 function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonState,locale,onHome}:{manifest?:LessonManifest;lessonSlug?:string;lessonPath?:{level:string;category:string;slug:string};lessonStates:LessonStateMap;onLessonState:(lessonId:string,patch:Partial<Omit<LessonState,"lessonId">>)=>void;locale:UiLocale;onHome:()=>void}){
   const auth=useAuth(),playerRef=useRef<AudioSegmentPlayerHandle>(null),transcriptAudioRef=useRef<HTMLAudioElement>(null),textareaRef=useRef<HTMLTextAreaElement>(null),recognitionRef=useRef<BrowserSpeechRecognition|null>(null),[lesson,setLesson]=useState<ListeningLesson>(),[failed,setFailed]=useState(false),[index,setIndex]=useState(0),[typed,setTyped]=useState(""),[submitted,setSubmitted]=useState(false),[revealed,setRevealed]=useState(false),[completed,setCompleted]=useState<Set<string>>(new Set()),[attempts,setAttempts]=useState(0),[speed,setSpeed]=useState(1),[mode,setMode]=useState<"dictation"|"transcript">("dictation"),[transcriptTimeMs,setTranscriptTimeMs]=useState(0),[saving,setSaving]=useState(false),[progressError,setProgressError]=useState(false),[lessonResetError,setLessonResetError]=useState(false),[favoriteBusy,setFavoriteBusy]=useState(false),[favoriteError,setFavoriteError]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[speechListening,setSpeechListening]=useState(false),[speechError,setSpeechError]=useState<SpeechRecognitionErrorKind|null>(null),[microphoneReady,setMicrophoneReady]=useState(false),[preferences,setPreferences]=useState<ListeningPreferences>(()=>loadLocalListeningPreferences("guest"));
   const [audioError,setAudioError]=useState(false),[audioAttempt,setAudioAttempt]=useState(0);
+  const [lessonCompleteOpen,setLessonCompleteOpen]=useState(false);
   useEffect(()=>{setFailed(false);const endpoint=lessonPath?`/api/listening/lessons/by-path?level=${encodeURIComponent(lessonPath.level)}&category=${encodeURIComponent(lessonPath.category)}&slug=${encodeURIComponent(lessonPath.slug)}`:`/api/listening/lessons/${encodeURIComponent(lessonSlug??"")}`;void getJson<{lesson:ListeningLesson}>(endpoint).then(({lesson:item})=>{setLesson(item);const local=loadGuest(item.id);setCompleted(local);if(auth.user)void getJson<{lesson:{current_sentence_position:number}|null;sentences:Array<{sentence_id:string;is_completed:boolean}>}>(`/api/listening/progress?lesson=${encodeURIComponent(item.id)}`).then(progress=>{const merged=new Set(local);progress.sentences.filter(x=>x.is_completed).forEach(x=>merged.add(x.sentence_id));setCompleted(merged);setIndex(Math.max(0,Math.min(item.sentences.length-1,(progress.lesson?.current_sentence_position??1)-1)));}).catch(()=>undefined);}).catch(()=>setFailed(true));},[lessonSlug,lessonPath?.level,lessonPath?.category,lessonPath?.slug,auth.user?.id]);
   useEffect(()=>{setTyped("");setSubmitted(false);setRevealed(false);setAttempts(0);setProgressError(false);},[index,lesson?.id]);
   useEffect(()=>{setAudioError(false);setAudioAttempt(0);},[lesson?.audio_url]);
+  useEffect(()=>setLessonCompleteOpen(false),[lesson?.id]);
   useEffect(()=>{const recognition=recognitionRef.current;recognitionRef.current=null;abortSpeechRecognition(recognition);setSpeechListening(false);setSpeechError(null);},[index,lesson?.id,mode]);
   useEffect(()=>()=>{const recognition=recognitionRef.current;recognitionRef.current=null;abortSpeechRecognition(recognition);},[]);
   useEffect(()=>{if(auth.loading)return;setPreferences(auth.user?.listeningPreferences??loadLocalListeningPreferences("guest"));},[auth.loading,auth.user?.id,auth.user?.listeningPreferences]);
   useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target as HTMLElement|null,inSettings=Boolean(target?.closest(".listening-settings-dialog")),isFormControl=target?.matches("textarea,input,select,button");if(inSettings||event.repeat)return;if(event.key==="Escape"){const skipButton=document.querySelector<HTMLButtonElement>(".skip-answer-button");if(skipButton){event.preventDefault();skipButton.click();}return;}if(event.key==="Enter"&&!event.shiftKey&&!isFormControl){const checkButton=document.querySelector<HTMLButtonElement>(".check-answer-button:not(:disabled)");if(checkButton){event.preventDefault();checkButton.click();return;}}if(matchesReplayShortcut(event,preferences.replayKey)){event.preventDefault();playerRef.current?.replay();}else if(!isFormControl&&event.code===preferences.playPauseKey){event.preventDefault();playerRef.current?.toggle();}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[preferences.playPauseKey,preferences.replayKey]);
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{const target=event.target as HTMLElement|null;if(target?.matches("textarea,input,select,button")||target?.closest(".listening-settings-dialog")||event.repeat)return;if(!event.ctrlKey||event.shiftKey||event.altKey||event.metaKey||!(["[","]"] as string[]).includes(event.key))return;event.preventDefault();moveToSentence(index+(event.key==="]"?1:-1));};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[index]);
+  useEffect(()=>{const buttons=document.querySelectorAll<HTMLButtonElement>(".lesson-toolbar-primary nav > button");buttons[0]?.setAttribute("title","Ctrl+[");buttons[1]?.setAttribute("title","Ctrl+]");},[lesson?.id]);
   if(failed)return <Shell locale={locale} onHome={onHome} title="English"><LoadError locale={locale} retry={()=>location.reload()}/></Shell>;if(!lesson)return <Loading locale={locale}/>;if(!lesson.sentences.length)return <Shell locale={locale} onHome={onHome} title={lesson.title}><div className="content-state">{translate(locale,"noLessons")}</div></Shell>;
   const SpeechRecognition=getSpeechRecognitionConstructor(),speechLocale=getSpeechRecognitionLocale(lesson.language_code),speechLanguageUnavailable=speechError==="languageUnsupported",speechAvailable=Boolean(SpeechRecognition&&speechLocale&&!speechLanguageUnavailable),speechButtonLabel=speechListening?speechRecognitionT(locale,"stop"):!SpeechRecognition?speechRecognitionT(locale,"unsupported"):!speechLocale||speechLanguageUnavailable?speechRecognitionT(locale,"languageUnsupported"):speechRecognitionT(locale,"start");
   const cancelSpeechRecognition=()=>{const recognition=recognitionRef.current;recognitionRef.current=null;abortSpeechRecognition(recognition);setSpeechListening(false);};
@@ -140,7 +163,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
     try{recognition.start();setSpeechListening(true);}catch{cancelSpeechRecognition();setSpeechError("unknown");}
   };
   const sentence=lesson.sentences[index],properNouns=detectLikelyProperNouns(sentence.transcript),lessonState=lessonStates[lesson.id]??{lessonId:lesson.id,starCount:0,isStarred:false,isCompleted:false},evaluation=evaluateAnswer({expected:sentence.transcript,actual:typed,language:"en"}),isDone=completed.has(sentence.id),accepted=isDone||revealed||(submitted&&evaluation.correct),percent=Math.round(completed.size/lesson.sentences.length*100),activeTranscriptIndex=findActiveTranscriptIndex(lesson.sentences,transcriptTimeMs),nextLesson=findNextLesson(manifest,lesson.id);
-  const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(false);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length)onLessonState(lesson.id,{isCompleted:true});if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect});}catch{/* local progress remains usable and can be retried */}finally{setSaving(false);}}};
+  const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(false);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length){onLessonState(lesson.id,{isCompleted:true});setLessonCompleteOpen(true);}if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect});}catch{/* local progress remains usable and can be retried */}finally{setSaving(false);}}};
   const submit=()=>{if(!typed.trim())return;setSubmitted(true);if(evaluation.correct)void complete();else setAttempts(value=>value+1);};
   const moveToSentence=(targetIndex:number)=>{if(targetIndex<0||targetIndex>=lesson.sentences.length||targetIndex===index)return;setIndex(targetIndex);};
   const next=()=>{if(!accepted)return;if(index===lesson.sentences.length-1){navigate(`/en/${lesson.category_slug}/${lesson.section_id}`);return;}moveToSentence(index+1);};
@@ -153,13 +176,14 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
     catch{setCompleted(previous);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...previous]));onLessonState(lesson.id,{isCompleted:previous.size>=lesson.sentences.length});setProgressError(true);}
     finally{setSaving(false);}
   };
-  const resetLesson=async()=>{
-    if(!window.confirm(lessonT(locale,"resetLessonConfirm")))return;
+  const clearLessonProgress=async()=>{
     cancelSpeechRecognition();setLessonResetError(false);const previous=new Set(completed),previousIndex=index;setSaving(true);setCompleted(new Set());localStorage.removeItem(guestKey(lesson.id));onLessonState(lesson.id,{isCompleted:false});setIndex(0);setTyped("");setSubmitted(false);setRevealed(false);setAttempts(0);
-    try{if(auth.user)await auth.resetListeningLessonProgress(lesson.id);requestAnimationFrame(()=>textareaRef.current?.focus());}
-    catch{setCompleted(previous);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...previous]));onLessonState(lesson.id,{isCompleted:previous.size>=lesson.sentences.length});setIndex(previousIndex);setLessonResetError(true);}
+    try{if(auth.user)await auth.resetListeningLessonProgress(lesson.id);requestAnimationFrame(()=>textareaRef.current?.focus());return true;}
+    catch{setCompleted(previous);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...previous]));onLessonState(lesson.id,{isCompleted:previous.size>=lesson.sentences.length});setIndex(previousIndex);setLessonResetError(true);return false;}
     finally{setSaving(false);}
   };
+  const resetLesson=async()=>{if(window.confirm(lessonT(locale,"resetLessonConfirm")))await clearLessonProgress();};
+  const repeatLesson=async()=>{if(await clearLessonProgress())setLessonCompleteOpen(false);};
   const toggleFavorite=async()=>{
     if(!auth.user||favoriteBusy)return;
     setFavoriteBusy(true);setFavoriteError(false);
@@ -209,7 +233,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
       </section>}
       <aside className="lesson-tip"><Lightbulb size={19}/><div><b>{lessonT(locale,"listeningTip")}</b><p>{lessonT(locale,"listeningTipText")}</p></div></aside>
       {nextLesson&&<a className="next-lesson-card" href={nextLesson.path} onClick={event=>followPathLink(event,nextLesson.path)}><span className="next-lesson-icon" aria-hidden="true"><Headphones size={21}/></span><span className="next-lesson-copy"><small>{lessonT(locale,"nextLesson")}</small><strong>{nextLesson.name}</strong><span>{nextLesson.categoryName} · {nextLesson.sectionTitle}{nextLesson.level?` · ${lessonT(locale,"vocabLevel")}: ${nextLesson.level}`:""} · {nextLesson.sentenceCount} {translate(locale,"sentences")}</span></span><ArrowRight className="next-lesson-arrow" size={21}/></a>}
-    </main>{settingsOpen&&<ListeningSettingsDialog locale={locale} preferences={preferences} onClose={()=>setSettingsOpen(false)} onSave={savePreferences}/>}
+    </main>{settingsOpen&&<ListeningSettingsDialog locale={locale} preferences={preferences} onClose={()=>setSettingsOpen(false)} onSave={savePreferences}/>}{lessonCompleteOpen&&<LessonCompletionDialog locale={locale} lessonTitle={lesson.title} nextLessonName={nextLesson?.name} busy={saving} error={lessonResetError} onNext={()=>nextLesson?navigate(nextLesson.path):navigate("/en")} onRepeat={()=>void repeatLesson()} onAllLessons={()=>navigate("/en")} onDismiss={()=>setLessonCompleteOpen(false)}/>}
   </div>;
 }
 
