@@ -37,6 +37,7 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "GET" && /^\/api\/listening\/lessons\/[\w-]+$/u.test(url.pathname)) return getLesson(env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/progress") return getProgress(env, session, url);
   if (request.method === "POST" && url.pathname === "/api/listening/progress") return mutationValid ? saveProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "DELETE" && url.pathname === "/api/listening/progress") return mutationValid ? resetProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/bootstrap") return isAdmin(env, session) ? getAdminBootstrap(env) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) ? getAdminLessons(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getAdminLesson(env, url) : json({ error: "forbidden" }, 403);
@@ -226,6 +227,38 @@ async function saveProgress(request: Request, env: Env, session: ListeningSessio
         completed_at=COALESCE(listening_lesson_progress.completed_at,EXCLUDED.completed_at)
       RETURNING lesson_id
     ) SELECT lesson_id FROM saved_lesson`;
+  return json({ ok: true });
+}
+
+async function resetProgress(request: Request, env: Env, session: ListeningSession | null) {
+  if (!session) return json({ error: "unauthorized" }, 401);
+  let body: Record<string, unknown>;
+  try { body = await boundedJson<Record<string, unknown>>(request); }
+  catch (error) { return error instanceof RequestBodyError ? json({ error: error.message }, error.status) : json({ error: "invalid_json" }, 400); }
+  const lessonId = typeof body.lessonId === "string" ? validId(body.lessonId) : null, sentenceId = typeof body.sentenceId === "string" ? validId(body.sentenceId) : null;
+  const position = Number.isInteger(body.position) && Number(body.position) > 0 && Number(body.position) <= 1000 ? Number(body.position) : null;
+  if (!lessonId || !sentenceId || !position) return json({ error: "invalid_progress" }, 422);
+  const sql = sqlFor(env), validRows = await sql`SELECT 1 FROM listening_sentences WHERE id=${sentenceId} AND lesson_id=${lessonId} AND position=${position}`;
+  if (!validRows.length) return json({ error: "invalid_progress" }, 422);
+  await sql`
+    WITH removed AS (
+      DELETE FROM listening_sentence_progress
+      WHERE user_id=${session.id} AND sentence_id=${sentenceId}
+      RETURNING sentence_id
+    ), counts AS (
+      SELECT COUNT(*)::int AS completed_count
+      FROM listening_sentence_progress sp
+      JOIN listening_sentences s ON s.id=sp.sentence_id
+      WHERE sp.user_id=${session.id} AND s.lesson_id=${lessonId} AND sp.is_completed=true AND sp.sentence_id<>${sentenceId}
+    )
+    UPDATE listening_lesson_progress
+    SET current_sentence_position=${position},
+        completed_sentence_count=counts.completed_count,
+        is_completed=false,
+        completed_at=NULL,
+        updated_at=now()
+    FROM counts
+    WHERE user_id=${session.id} AND lesson_id=${lessonId}`;
   return json({ ok: true });
 }
 

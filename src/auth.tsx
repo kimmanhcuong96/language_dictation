@@ -79,6 +79,7 @@ interface AuthContextValue {
   syncProgress: (local: ProgressMap, lessonLanguages: Record<string, TargetLanguage>) => Promise<ProgressMap>;
   leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
   saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
+  resetListeningProgress: (input: { lessonId: string; sentenceId: string; position: number }) => Promise<void>;
   saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
@@ -217,6 +218,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveListeningProgress: async (input) => {
       if (!csrf) throw new Error("not_authenticated");
       await api("/api/listening/progress", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
+    resetListeningProgress: async (input) => {
+      if (!csrf) throw new Error("not_authenticated");
+      await api("/api/listening/progress", { method: "DELETE", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
     },
     saveListeningPreferences: async (preferences) => {
       if (!csrf || !user) throw new Error("not_authenticated");
