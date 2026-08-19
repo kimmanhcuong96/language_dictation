@@ -122,7 +122,7 @@ function App() {
   );
 }
 
-function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToPath(`/learn/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
+function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToPath(`/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -263,7 +263,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
         <nav>
           <p className="nav-label">{t("learning")}</p>
           <button className="nav-item" onClick={onHome}><Home size={19} />{t("home")}</button>
-          <a className="nav-item active" href={`/learn/${language}`}><Library size={19} />{t("library")}<span className="count">{languageLessons.length}</span></a>
+          <a className="nav-item active" href={`/${language}`}><Library size={19} />{t("library")}<span className="count">{languageLessons.length}</span></a>
           <button className="nav-item" type="button"><BarChart3 size={19} />{t("progress")}</button>
           <button className="nav-item" type="button"><Heart size={19} />{t("saved")}</button>
           <LeaderboardLauncher locale={locale} nav />

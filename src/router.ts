@@ -19,8 +19,8 @@ export function resolveAppView(pathname: string, hash: string): AppView {
   if (routePath === "/admin/listening/translations") return { page: "adminTranslations" };
   if (routePath === "/admin/listening") return { page: "admin" };
   if (routePath === "/admin") return { page: "adminDashboard" };
-  if (/^\/learn\/en(?:\/.*)?$/u.test(routePath)) return { page: "english" };
-  const comingMatch = routePath.match(/^\/learn\/(ja|zh)(?:\/.*)?$/u);
+  if (/^\/(?:learn\/)?en(?:\/.*)?$/u.test(routePath)) return { page: "english" };
+  const comingMatch = routePath.match(/^\/(?:learn\/)?(ja|zh)(?:\/.*)?$/u);
   if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja" | "zh" };
   const lessonMatch = routePath.match(/^\/learn\/(en|zh|ja)\/lesson\/(.+)$/u);
   if (lessonMatch) return { page: "lesson", language: lessonMatch[1] as TargetLanguage, lessonId: lessonMatch[2] };
@@ -32,13 +32,13 @@ export function resolveAppView(pathname: string, hash: string): AppView {
 
 export function viewPath(view: Exclude<AppView, { page: "canonicalLesson" }>) {
   return view.page === "home" ? "/"
-    : view.page === "english" ? "/learn/en"
+    : view.page === "english" ? "/en"
     : view.page === "adminDashboard" ? "/admin"
     : view.page === "admin" ? "/admin/listening"
     : view.page === "adminManagement" ? "/admin/listening/manage"
     : view.page === "adminTranslations" ? "/admin/listening/translations"
-    : view.page === "coming" || view.page === "library" ? `/learn/${view.language}`
-    : `/learn/${view.language}/lesson/${view.lessonId}`;
+    : view.page === "coming" || view.page === "library" ? `/${view.language}`
+    : `/${view.language}/lesson/${view.lessonId}`;
 }
 
 export function pathHref(path: string) { return normalizePath(path); }
@@ -50,7 +50,8 @@ export function navigateToPath(path: string) {
 
 export function migrateLegacyHashRoute(hash: string): boolean {
   if (!/^#\/(?:admin|learn|lesson)(?:\/|$)/u.test(hash)) return false;
-  window.history.replaceState({}, "", hash.slice(1));
+  const legacyPath = hash.slice(1);
+  window.history.replaceState({}, "", legacyPath.replace(/^\/learn\/(?=(?:en|ja|zh)(?:\/|$))/u, "/"));
   window.dispatchEvent(new PopStateEvent("popstate"));
   return true;
 }

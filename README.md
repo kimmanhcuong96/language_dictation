@@ -127,7 +127,7 @@ infra/r2-cors.json    CORS tối thiểu cho audio public
 ## Routing đa ngôn ngữ
 
 - `#/` — chọn ngôn ngữ muốn học.
-- `#/learn/en`, `#/learn/zh`, `#/learn/ja` — thư viện tương ứng.
-- `#/learn/:language/lesson/:lessonId` — trang luyện nghe.
+- `/en`, `/zh`, `/ja` — thư viện tương ứng.
+- `/:language/lesson/:lessonId` — trang luyện nghe.
 
 Ngôn ngữ giao diện được lưu riêng trong `localStorage`; đổi giao diện không làm thay đổi khóa học hoặc tiến độ.

@@ -101,6 +101,37 @@ async function getLessonByPath(env: Env, url: URL) {
   return json({ lesson: serializeLesson(lesson, sentences) }, 200, true);
 }
 
+const seoLanguageNames: Record<string, string> = { en: "English", ja: "Japanese", zh: "Chinese" };
+
+export async function serveSeoLibrary(request: Request, env: Env, url: URL): Promise<Response | null> {
+  const parts = url.pathname.split("/").filter(Boolean).map((part) => { try { return decodeURIComponent(part); } catch { return ""; } });
+  if ((parts.length !== 1 && parts.length !== 2) || !["en", "ja", "zh"].includes(parts[0]) || (parts[1] && !validPathPart(parts[1]))) return null;
+  const [language, categorySlug] = parts, languageName = seoLanguageNames[language], sql = sqlFor(env);
+  const canonical = new URL(url.pathname, request.url).toString();
+
+  if (!categorySlug) {
+    const categories = await sql`SELECT c.slug,c.name,c.description,COUNT(l.id)::int AS lesson_count FROM languages lang JOIN listening_categories c ON c.language_id=lang.id AND c.is_published=true LEFT JOIN listening_sections s ON s.category_id=c.id AND s.is_published=true LEFT JOIN listening_lessons l ON l.section_id=s.id AND l.is_published=true WHERE lang.code=${language} AND lang.is_enabled=true GROUP BY c.id ORDER BY c.sort_order,c.name`;
+    const links = categories.map((row) => `<li><a href="/${language}/${escapeHtml(String(row.slug))}"><h2>${escapeHtml(String(row.name))}</h2>${row.description?`<p>${escapeHtml(String(row.description))}</p>`:""}<p>${Number(row.lesson_count)} lessons</p></a></li>`).join("");
+    const content = `<main class="seo-library"><h1>${escapeHtml(languageName)} listening lessons</h1><p>Practice listening and dictation by topic.</p>${links?`<ul>${links}</ul>`:"<p>Lessons are coming soon.</p>"}</main>`;
+    return seoHtml(request, env, { title: `${languageName} listening lessons`, description: `Practice ${languageName} listening and dictation with lessons organized by topic.`, canonical, content, language });
+  }
+
+  const categoryRows = await sql`SELECT c.id,c.name,c.description FROM languages lang JOIN listening_categories c ON c.language_id=lang.id WHERE lang.code=${language} AND lang.is_enabled=true AND c.slug=${categorySlug} AND c.is_published=true LIMIT 1`;
+  const category = categoryRows[0];
+  if (!category) return seoHtml(request, env, { status: 404, title: "Topic not found", description: "This listening topic is not available.", language });
+  const rows = await sql`SELECT s.id,s.number,s.title,l.title AS lesson_title,l.slug AS lesson_slug,l.level,l.sentence_count FROM listening_sections s LEFT JOIN listening_lessons l ON l.section_id=s.id AND l.is_published=true WHERE s.category_id=${category.id} AND s.is_published=true ORDER BY s.sort_order,s.number,l.sort_order,l.title`;
+  const sections = new Map<string, { number: number; title: string; lessons: Record<string, unknown>[] }>();
+  for (const row of rows) {
+    const id = String(row.id), current = sections.get(id) ?? { number: Number(row.number), title: String(row.title), lessons: [] };
+    if (row.lesson_slug) current.lessons.push(row);
+    sections.set(id, current);
+  }
+  const sectionHtml = [...sections.values()].map((section) => `<section><h2>${escapeHtml(section.title || `Section ${section.number}`)}</h2>${section.lessons.length?`<ul>${section.lessons.map((lesson) => `<li><a href="${escapeHtml(lessonPath(String(lesson.level ?? "all"), categorySlug, String(lesson.lesson_slug)))}">${escapeHtml(String(lesson.lesson_title))}</a> <span>${escapeHtml(String(lesson.level ?? "All"))} · ${Number(lesson.sentence_count)} sentences</span></li>`).join("")}</ul>`:"<p>Lessons are coming soon.</p>"}</section>`).join("");
+  const description = String(category.description ?? `${languageName} ${category.name} listening and dictation lessons.`).slice(0, 160);
+  const content = `<main class="seo-library"><nav><a href="/${language}">${escapeHtml(languageName)} topics</a></nav><h1>${escapeHtml(String(category.name))}</h1><p>${escapeHtml(description)}</p>${sectionHtml || "<p>Lessons are coming soon.</p>"}</main>`;
+  return seoHtml(request, env, { title: `${category.name} · ${languageName}`, description, canonical, content, language });
+}
+
 export async function serveSeoLesson(request: Request, env: Env, url: URL): Promise<Response> {
   const parts = url.pathname.split("/").filter(Boolean).map((part) => { try { return decodeURIComponent(part); } catch { return ""; } });
   if (parts.length === 3 && parts[0] === "lessons" && parts.slice(1).every(validPathPart)) {
@@ -129,18 +160,24 @@ export async function serveSeoLesson(request: Request, env: Env, url: URL): Prom
 }
 
 export async function serveSitemap(env: Env, request: Request): Promise<Response> {
-  const rows = await sqlFor(env)`SELECT p.path,l.updated_at FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY l.updated_at DESC`;
+  const sql = sqlFor(env);
+  const [rows, categories] = await Promise.all([
+    sql`SELECT p.path,l.updated_at FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY l.updated_at DESC`,
+    sql`SELECT lang.code,c.slug FROM languages lang JOIN listening_categories c ON c.language_id=lang.id WHERE lang.code IN ('en','ja','zh') AND lang.is_enabled=true AND c.is_published=true ORDER BY lang.sort_order,c.sort_order`,
+  ]);
   const base = new URL(request.url).origin;
-  const urls = rows.map((row) => `<url><loc>${escapeHtml(`${base}${String(row.path)}`)}</loc><lastmod>${new Date(String(row.updated_at)).toISOString()}</lastmod></url>`).join("");
+  const libraryUrls = ["en", "ja", "zh"].map((language) => `<url><loc>${escapeHtml(`${base}/${language}`)}</loc></url>`).join("") + categories.map((row) => `<url><loc>${escapeHtml(`${base}/${String(row.code)}/${String(row.slug)}`)}</loc></url>`).join("");
+  const urls = libraryUrls + rows.map((row) => `<url><loc>${escapeHtml(`${base}${String(row.path)}`)}</loc><lastmod>${new Date(String(row.updated_at)).toISOString()}</lastmod></url>`).join("");
   return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`, { headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=300" } });
 }
 
 export function serveRobots(request: Request): Response { return new Response(`User-agent: *\nAllow: /\nSitemap: ${new URL("/sitemap.xml", request.url).toString()}\n`, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } }); }
 
-async function seoHtml(request: Request, env: Env, options: { status?: number; title: string; description: string; canonical?: string; content?: string }): Promise<Response> {
+async function seoHtml(request: Request, env: Env, options: { status?: number; title: string; description: string; canonical?: string; content?: string; language?: string }): Promise<Response> {
   const shellResponse = await env.ASSETS.fetch(new Request(new URL("/", request.url), request));
   let html = await shellResponse.text();
   html = html.replace(/<title>[^<]*<\/title>/u, `<title>${escapeHtml(options.title)} | Me2Listen</title>`).replace(/<meta name="description" content="[^"]*"\s*\/>/u, `<meta name="description" content="${escapeHtml(options.description)}" />`);
+  if (options.language) html = html.replace(/<html lang="[^"]*">/u, `<html lang="${escapeHtml(options.language)}">`);
   if (options.canonical) html = html.replace("</head>", `<link rel="canonical" href="${escapeHtml(options.canonical)}" /></head>`);
   if (options.content) html = html.replace(/<div id="root"><\/div>/u, `<div id="root">${options.content}</div>`);
   return new Response(html, { status: options.status ?? 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=60, stale-while-revalidate=300" } });
