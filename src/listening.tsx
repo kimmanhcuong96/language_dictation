@@ -12,6 +12,7 @@ import { evaluateAnswer } from "./lib/dictation";
 import { matchesReplayShortcut, shortcutLabel, type ListeningPreferences } from "./lib/listeningPreferences";
 import { loadLocalListeningPreferences, saveLocalListeningPreferences } from "./lib/listeningPreferencesStorage";
 import { lessonT } from "./lessonI18n";
+import { buildLessonAudioRequestUrl } from "./lib/lessonAudioRequest";
 import { lessonManagementT } from "./lessonManagementI18n";
 import { findNextLesson, loadLessonManifest, type LessonManifest } from "./lib/lessonManifest";
 import { abortSpeechRecognition, classifyMicrophoneAccessError, classifySpeechRecognitionError, collectRecognizedSpeech, getSpeechRecognitionConstructor, getSpeechRecognitionLocale, mergeRecognizedSpeech, requestMicrophoneAccess, type BrowserSpeechRecognition, type SpeechRecognitionErrorKind } from "./lib/speechRecognition";
@@ -169,7 +170,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
   const savePreferences=async(nextPreferences:ListeningPreferences)=>{if(auth.user)await auth.saveListeningPreferences(nextPreferences);else saveLocalListeningPreferences("guest",nextPreferences);setPreferences(nextPreferences);};
   const onEnter=(event:React.KeyboardEvent<HTMLTextAreaElement>)=>{if(event.key!=="Enter"||event.shiftKey)return;event.preventDefault();if(accepted)next();else if(!submitted)submit();};
   const playTranscriptSentence=(startMs:number)=>{const audio=transcriptAudioRef.current;if(!audio)return;setTranscriptTimeMs(startMs);void seekAndPlayTranscript(audio,startMs).catch(()=>undefined);};
-  const playableAudioSource=lesson.audio_url??undefined,retryAudio=()=>{setAudioError(false);setAudioAttempt(value=>value+1);};
+  const playableAudioSource=lesson.audio_url?buildLessonAudioRequestUrl(lesson.audio_url,audioAttempt):undefined,retryAudio=()=>{setAudioError(false);setAudioAttempt(value=>value+1);};
   const audioPlaceholder=<LessonAudioPlaceholder status={!lesson.audio_url?"missing":"error"} retry={retryAudio} locale={locale}/>;
   return <div className="dictation-shell">
     <main className="lesson-practice-page">
