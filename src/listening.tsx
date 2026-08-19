@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, Clock3, Headphones, Lightbulb, Mic, RotateCcw, Search, Settings2, Star, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Clock3, Headphones, Lightbulb, Mic, RotateCcw, Search, Settings2, Star, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAuth } from "./auth";
 import { adminSystemT } from "./adminSystemI18n";
@@ -80,8 +80,8 @@ function LessonCompletionDialog({locale,lessonTitle,nextLessonName,busy,error,on
     <p id="lesson-completion-message">{lessonCompletionT(locale,"message")}</p>
     {error&&<p className="lesson-completion-error" role="alert">{lessonT(locale,"resetLessonError")}</p>}
     <div className="lesson-completion-actions">
-      {nextLessonName&&<button type="button" className="primary-button" autoFocus disabled={busy} onClick={onNext}><span>{lessonCompletionT(locale,"nextLesson")}</span><small>{nextLessonName}</small><ArrowRight size={17}/></button>}
       <button type="button" disabled={busy} onClick={onRepeat}><RotateCcw size={16}/>{lessonCompletionT(locale,"repeatLesson")}</button>
+      {nextLessonName&&<button type="button" className="primary-button" autoFocus disabled={busy} onClick={onNext}><span>{lessonCompletionT(locale,"nextLesson")}</span><small>{nextLessonName}</small><ArrowRight size={17}/></button>}
     </div>
     <button type="button" className="lesson-completion-all" disabled={busy} onClick={onAllLessons}>{lessonCompletionT(locale,"allLessons")}</button>
   </dialog>;
@@ -163,10 +163,10 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
     try{recognition.start();setSpeechListening(true);}catch{cancelSpeechRecognition();setSpeechError("unknown");}
   };
   const sentence=lesson.sentences[index],properNouns=detectLikelyProperNouns(sentence.transcript),lessonState=lessonStates[lesson.id]??{lessonId:lesson.id,starCount:0,isStarred:false,isCompleted:false},evaluation=evaluateAnswer({expected:sentence.transcript,actual:typed,language:"en"}),isDone=completed.has(sentence.id),accepted=isDone||revealed||(submitted&&evaluation.correct),percent=Math.round(completed.size/lesson.sentences.length*100),activeTranscriptIndex=findActiveTranscriptIndex(lesson.sentences,transcriptTimeMs),nextLesson=findNextLesson(manifest,lesson.id);
-  const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(false);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length){onLessonState(lesson.id,{isCompleted:true});setLessonCompleteOpen(true);}if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect});}catch{/* local progress remains usable and can be retried */}finally{setSaving(false);}}};
+  const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(false);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length)onLessonState(lesson.id,{isCompleted:true});if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect});}catch{/* local progress remains usable and can be retried */}finally{setSaving(false);}}};
   const submit=()=>{if(!typed.trim())return;setSubmitted(true);if(evaluation.correct)void complete();else setAttempts(value=>value+1);};
   const moveToSentence=(targetIndex:number)=>{if(targetIndex<0||targetIndex>=lesson.sentences.length||targetIndex===index)return;setIndex(targetIndex);};
-  const next=()=>{if(!accepted)return;if(index===lesson.sentences.length-1){navigate(`/en/${lesson.category_slug}/${lesson.section_id}`);return;}moveToSentence(index+1);};
+  const next=()=>{if(!accepted)return;if(index===lesson.sentences.length-1){setLessonCompleteOpen(true);return;}moveToSentence(index+1);};
   const skip=()=>{setTyped(sentence.transcript);setSubmitted(true);setRevealed(true);void complete(false);};
   const retryAnswer=async()=>{
     if(!isDone||saving)return;
@@ -225,7 +225,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
               <div>{!accepted?<>
                 {!submitted&&<span className="shortcut-tooltip"><button type="button" className="primary-button check-answer-button" aria-describedby="check-answer-tooltip" disabled={!typed.trim()} onClick={submit}>{translate(locale,"check")}</button><span id="check-answer-tooltip" className="shortcut-tooltip-content" role="tooltip">{lessonT(locale,"checkShortcut")}</span></span>}
                 <span className="shortcut-tooltip"><button type="button" className="skip-button skip-answer-button" aria-describedby="skip-answer-tooltip" onClick={skip}>{translate(locale,"skip")}</button><span id="skip-answer-tooltip" className="shortcut-tooltip-content" role="tooltip">{lessonT(locale,"skipShortcut")}</span></span>
-              </>:<button type="button" className="primary-button" onClick={next}>{translate(locale,"next")}<ArrowRight size={16}/></button>}</div>
+              </>:<button type="button" className="primary-button" onClick={next}>{index===lesson.sentences.length-1?lessonCompletionT(locale,"finish"):translate(locale,"next")}{index===lesson.sentences.length-1?<Check size={16}/>:<ArrowRight size={16}/>}</button>}</div>
             </div>
           </div>
           <aside className="answer-insight" aria-live="polite" hidden={!accepted}>{accepted&&<><LessonTranslationPanel lessonId={lesson.id} sentenceId={sentence.id} locale={locale}/><section><h2>{lessonT(locale,"pronunciation")}</h2><div className="pronunciation-words">{sentence.transcript.split(/\s+/u).map((word,wordIndex)=><span key={`${word}-${wordIndex}`}>{word}</span>)}</div><small>{lessonT(locale,"pronunciationHint")}</small></section></>}</aside>
