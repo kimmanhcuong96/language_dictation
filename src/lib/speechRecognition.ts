@@ -71,6 +71,19 @@ export function classifySpeechRecognitionError(error: string): SpeechRecognition
   return "unknown";
 }
 
+export function classifyMicrophoneAccessError(error: unknown): SpeechRecognitionErrorKind {
+  const name = error instanceof DOMException ? error.name : error instanceof Error ? error.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError") return "permission";
+  if (name === "NotFoundError" || name === "DevicesNotFoundError" || name === "NotReadableError" || name === "TrackStartError" || name === "OverconstrainedError") return "audioCapture";
+  return "unknown";
+}
+
+export async function requestMicrophoneAccess(): Promise<void> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  for (const track of stream.getTracks()) track.stop();
+}
+
 export function abortSpeechRecognition(recognition: BrowserSpeechRecognition | null): void {
   if (!recognition) return;
   recognition.onstart = null;

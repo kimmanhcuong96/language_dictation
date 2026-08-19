@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abortSpeechRecognition, classifySpeechRecognitionError, collectRecognizedSpeech, getSpeechRecognitionConstructor, getSpeechRecognitionLocale, mergeRecognizedSpeech, type BrowserSpeechRecognition, type BrowserSpeechRecognitionConstructor, type SpeechRecognitionErrorEventLike, type SpeechRecognitionEventLike, type SpeechRecognitionResultListLike } from "./speechRecognition";
+import { abortSpeechRecognition, classifyMicrophoneAccessError, classifySpeechRecognitionError, collectRecognizedSpeech, getSpeechRecognitionConstructor, getSpeechRecognitionLocale, mergeRecognizedSpeech, type BrowserSpeechRecognition, type BrowserSpeechRecognitionConstructor, type SpeechRecognitionErrorEventLike, type SpeechRecognitionEventLike, type SpeechRecognitionResultListLike } from "./speechRecognition";
 
 describe("speech recognition helpers", () => {
   it("maps learning language identifiers to explicit BCP 47 locales", () => {
@@ -39,6 +39,12 @@ describe("speech recognition helpers", () => {
     expect(classifySpeechRecognitionError("network")).toBe("network");
     expect(classifySpeechRecognitionError("language-not-supported")).toBe("languageUnsupported");
     expect(classifySpeechRecognitionError("aborted")).toBeNull();
+  });
+
+  it("distinguishes denied microphone access from missing capture devices", () => {
+    expect(classifyMicrophoneAccessError(new DOMException("Blocked", "NotAllowedError"))).toBe("permission");
+    expect(classifyMicrophoneAccessError(new DOMException("Missing", "NotFoundError"))).toBe("audioCapture");
+    expect(classifyMicrophoneAccessError(new Error("Unexpected"))).toBe("unknown");
   });
 
   it("detaches callbacks and safely aborts an active instance", () => {
