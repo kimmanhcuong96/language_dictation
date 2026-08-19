@@ -12,6 +12,6 @@ describe("AudioSegmentPlayer", () => {
     const audio = container.querySelector("audio");
     expect(audio).not.toBeNull();
     expect(audio?.getAttribute("src")).toBe(source);
-    expect(audio?.getAttribute("preload")).toBe("auto");
+    expect(audio?.getAttribute("preload")).toBe("metadata");
   });
 });
