@@ -71,7 +71,7 @@ async function getSections(env: Env, url: URL) {
 
 async function getLessons(env: Env, url: URL) {
   const section = validId(url.searchParams.get("section")); if (!section) return json({ error: "invalid_section" }, 422);
-  const rows = await sqlFor(env)`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,l.sort_order,c.slug AS category_slug,s.id AS section_id FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id WHERE s.id=${section} AND c.is_published=true AND s.is_published=true AND l.is_published=true ORDER BY l.sort_order,l.title`;
+  const rows = await sqlFor(env)`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,l.sort_order,c.slug AS category_slug,s.id AS section_id FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id WHERE s.id=${section} AND c.is_published=true AND s.is_published=true AND l.is_published=true ORDER BY l.sort_order,l.created_at,l.id`;
   return json({ lessons: rows.map((row) => ({ ...row, path: lessonPath(String(row.level ?? "all"), String(row.category_slug), String(row.slug)) })) }, 200, true);
 }
 
@@ -80,8 +80,8 @@ async function getManifest(env: Env, url: URL) {
   const versionRows = await sql`SELECT version::text AS version FROM listening_manifest_meta WHERE id=true`;
   const version = String(versionRows[0]?.version ?? "1");
   if (url.searchParams.get("version") === version) return new Response(null, { status: 304, headers: { ETag: `"${version}"`, "Cache-Control": "no-cache" } });
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sentence_count,l.sort_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.title`;
-  return json({ version, lessons: rows.map((row) => ({ id: row.id, name: row.title, slug: row.slug, path: row.path, parentId: `${row.language_code}-${row.section_id}`, language: row.language_code, level: row.level, categorySlug: row.category_slug, categoryName: row.category_name, sectionId: row.section_id, sectionNumber: row.section_number, sectionTitle: row.section_title, order: row.sort_order, sentenceCount: row.sentence_count, updatedAt: row.updated_at })) }, 200, false);
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sentence_count,ROW_NUMBER() OVER(PARTITION BY l.section_id ORDER BY l.sort_order,l.created_at,l.id)::int AS display_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.created_at,l.id`;
+  return json({ version, lessons: rows.map((row) => ({ id: row.id, name: row.title, slug: row.slug, path: row.path, parentId: `${row.language_code}-${row.section_id}`, language: row.language_code, level: row.level, categorySlug: row.category_slug, categoryName: row.category_name, sectionId: row.section_id, sectionNumber: row.section_number, sectionTitle: row.section_title, order: row.display_order, sentenceCount: row.sentence_count, updatedAt: row.updated_at })) }, 200, false);
 }
 
 async function getLesson(env: Env, url: URL) {
@@ -619,7 +619,7 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
   if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
   if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
   const slug = slugifyTitle(title.trim()); if (!slug) return json({ error: "title_cannot_create_slug" }, 422);
-  const sql = sqlFor(env), sectionRows = await sql`SELECT s.id,c.slug AS category_slug,l.code AS language_code FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`; if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
+  const sql = sqlFor(env), sectionRows = await sql`SELECT s.id,c.slug AS category_slug,l.code AS language_code,COALESCE((SELECT MAX(existing.sort_order) FROM listening_lessons existing WHERE existing.section_id=s.id),0)::int AS max_sort_order FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`; if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
   const languageCode = String(sectionRows[0].language_code), lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/${languageCode}/lessons/${lessonId}/audio.${extension}`;
   let sentences: AlignedSentence[];
   if (importMode !== "ai") return json({ error: "invalid_import_mode" }, 422);
@@ -629,7 +629,7 @@ async function importLesson(request: Request, env: Env, session: ListeningSessio
     return alignmentErrorResponse(error);
   }
   try {
-    const result=await persistImportedLesson(env,sql,session,{audio,audioFileName:audio.name,transcript:transcript.trim(),sectionId,title:title.trim(),slug,level,durationMs,sentences,languageCode,categorySlug:String(sectionRows[0].category_slug),sortOrder:999,publish:false,source:"ai",lessonId,jobId,audioKey});
+    const result=await persistImportedLesson(env,sql,session,{audio,audioFileName:audio.name,transcript:transcript.trim(),sectionId,title:title.trim(),slug,level,durationMs,sentences,languageCode,categorySlug:String(sectionRows[0].category_slug),sortOrder:Number(sectionRows[0].max_sort_order)+1,publish:false,source:"ai",lessonId,jobId,audioKey});
     const reviewRows = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
     return json({ jobId:result.jobId, lessonId:result.lessonId, slug:result.slug, path:result.canonicalPath, status: "READY_FOR_REVIEW", sentences: reviewRows });
   } catch (error) {

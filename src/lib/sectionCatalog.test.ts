@@ -15,6 +15,14 @@ describe("section catalog", () => {
     expect(sections[0].lessons.map(item => item.id)).toEqual(["first", "second"]);
   });
 
+  it("preserves import order when legacy lessons share the same order", () => {
+    const sections = buildLessonSections([
+      lesson({ id: "imported-first", name: "Zulu", order: 999 }),
+      lesson({ id: "imported-second", name: "Alpha", order: 999 }),
+    ], "en", "topic");
+    expect(sections[0].lessons.map(item => item.id)).toEqual(["imported-first", "imported-second"]);
+  });
+
   it("filters lessons while retaining their section", () => {
     const sections = buildLessonSections([lesson({ name: "First Snowfall" }), lesson({ name: "Summer Holiday", level: "B1" })], "en", "topic");
     expect(filterLessonSections(sections, "snow", "A1")[0].lessons[0].name).toBe("First Snowfall");

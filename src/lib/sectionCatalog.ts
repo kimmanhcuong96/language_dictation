@@ -20,7 +20,7 @@ export function buildLessonSections(lessons: LessonManifestItem[], language: str
   }
   const ordered = [...sections.values()];
   if (!sectionSeeds.length) ordered.sort((left, right) => left.number - right.number || left.title.localeCompare(right.title));
-  return ordered.map(section => ({ ...section, lessons: section.lessons.sort((left, right) => left.order - right.order || left.name.localeCompare(right.name)) }));
+  return ordered.map(section => ({ ...section, lessons: section.lessons.sort((left, right) => left.order - right.order) }));
 }
 
 export function filterLessonSections(sections: LessonSection[], query: string, level: string): LessonSection[] {

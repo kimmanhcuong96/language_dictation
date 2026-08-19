@@ -17,7 +17,7 @@ export interface LessonManifestItem {
 }
 
 export interface LessonManifest { version: string; lessons: LessonManifestItem[]; }
-const CACHE_KEY = "me2listen-lesson-manifest-v2";
+const CACHE_KEY = "me2listen-lesson-manifest-v3";
 
 export function findNextLesson(manifest: LessonManifest | undefined, currentLessonId: string, language = "en"): LessonManifestItem | undefined {
   if (!manifest) return undefined;
