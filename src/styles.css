@@ -214,6 +214,12 @@ h1,h2,h3 { font-family: "Manrope", sans-serif; }
 .shortcut-tooltip:hover .shortcut-tooltip-content,.shortcut-tooltip:focus-within .shortcut-tooltip-content{visibility:visible;opacity:1;transform:translate(-50%,0)}
 @media(prefers-reduced-motion:reduce){.shortcut-tooltip-content{transition:none}}
 
+.microphone-placeholder.listening{border-color:#168a55;background:#168a55;color:#fff;box-shadow:0 0 0 5px #28a86a24}
+.microphone-placeholder.listening:after{content:"";position:absolute;inset:-6px;border:2px solid #2ca86c80;border-radius:50%;animation:microphone-listening-pulse 1.35s ease-out infinite;pointer-events:none}
+.speech-recognition-status{margin:20px 2px 0;color:#397257;font-size:11px;line-height:1.45}.speech-recognition-status.error{color:#b34d40}
+@keyframes microphone-listening-pulse{0%{transform:scale(.8);opacity:.85}75%,100%{transform:scale(1.35);opacity:0}}
+@media(prefers-reduced-motion:reduce){.microphone-placeholder.listening:after{animation:none}}
+
 .lesson-translation-panel{grid-column:1/-1;padding:0!important;overflow:hidden;background:#fff!important}
 .answer-insight[hidden]{display:none}
 .lesson-translation-panel>header{padding:14px 16px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;border-bottom:1px solid #e1e7e3;background:#f5faf7}

@@ -80,7 +80,7 @@ async function getManifest(env: Env, url: URL) {
 
 async function getLesson(env: Env, url: URL) {
   const id = validId(decodeURIComponent(url.pathname.slice("/api/listening/lessons/".length))); if (!id) return json({ error: "invalid_lesson" }, 422);
-  const rows = await sqlFor(env)`SELECT l.id,l.slug,l.title,l.description,l.level,l.audio_key,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,c.slug AS category_slug,s.id AS section_id,s.number AS section_number FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id WHERE (l.id=${id} OR l.slug=${id}) AND c.is_published=true AND s.is_published=true AND l.is_published=true`;
+  const rows = await sqlFor(env)`SELECT l.id,l.slug,l.title,l.description,l.level,l.audio_key,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,c.slug AS category_slug,s.id AS section_id,s.number AS section_number,lang.code AS language_code FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (l.id=${id} OR l.slug=${id}) AND lang.is_enabled=true AND c.is_published=true AND s.is_published=true AND l.is_published=true`;
   const lesson = rows[0]; if (!lesson) return json({ error: "not_found" }, 404);
   const sentences = await sqlFor(env)`SELECT id,position,transcript,start_ms,end_ms,metadata FROM listening_sentences WHERE lesson_id=${lesson.id} ORDER BY position`;
   return json({ lesson: serializeLesson(lesson, sentences) }, 200, true);
@@ -91,7 +91,7 @@ async function getLessonByPath(env: Env, url: URL) {
   if (!level || !category || !slug || !validPathPart(level) || !validPathPart(category) || !validPathPart(slug)) return json({ error: "invalid_lesson_path" }, 422);
   const sql = sqlFor(env);
   const path = lessonPath(level, category, slug);
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.audio_key,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,c.slug AS category_slug,s.id AS section_id,s.number AS section_number FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE p.path=${path} AND lang.is_enabled=true AND c.is_published=true AND s.is_published=true AND l.is_published=true`;
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.audio_key,l.duration_ms,l.sentence_count,l.thumbnail_key,l.metadata,c.slug AS category_slug,s.id AS section_id,s.number AS section_number,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE p.path=${path} AND lang.is_enabled=true AND c.is_published=true AND s.is_published=true AND l.is_published=true`;
   const lesson = rows[0]; if (!lesson) return json({ error: "not_found" }, 404);
   const sentences = await sql`SELECT id,position,transcript,start_ms,end_ms,metadata FROM listening_sentences WHERE lesson_id=${lesson.id} ORDER BY position`;
   return json({ lesson: serializeLesson(lesson, sentences) }, 200, true);

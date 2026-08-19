@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useAuth, type LeaderboardEntry } from "./auth";
 import { lessons, lessonsByLanguage, targetLanguages } from "./data/lessons";
 import { localeLabels, translate, type TranslationKey } from "./i18n";
+import { lessonT } from "./lessonI18n";
 import { resolveAudioUrl, speak } from "./lib/audio";
 import { answerScore } from "./lib/text";
 import { evaluateAnswer } from "./lib/dictation";
@@ -74,7 +75,7 @@ function App() {
   useEffect(() => localStorage.setItem("me2listen-locale", locale), [locale]);
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title = "Me2Listen | Listen and Dictate";
+    document.title = translate(locale,"appTitle");
   }, [locale, view.page]);
 
   useEffect(() => {
@@ -149,7 +150,7 @@ function LocaleSelect({ locale, onLocale, dark = false }: { locale: UiLocale; on
   }, [open]);
 
   return <div ref={rootRef} className={`locale-select ${dark ? "dark" : ""}`}>
-    <span id="language-label" className="sr-only">Interface language</span>
+    <span id="language-label" className="sr-only">{translate(locale,"interfaceLanguage")}</span>
     <button type="button" className="locale-trigger" aria-labelledby="language-label" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
       <span className="locale-value"><span className={`locale-flag flag-${locale}`} aria-hidden="true">{flags[locale]}</span><span className="locale-name">{localeLabels[locale]}</span></span>
       <ChevronDown size={17} aria-hidden="true" />
@@ -173,9 +174,9 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
     ja: { en: "アメリカ英語とイギリス英語の物語・会話", zh: "日常で使える語彙と標準中国語", ja: "短い物語で学ぶ自然な東京の日本語" },
   };
   return <div className="language-home">
-    <header className="landing-header"><Logo /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
+    <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
     <main className="landing-main">
-      <div className="landing-badge"><Headphones size={16} /> LISTEN · TYPE · LEARN</div>
+      <div className="landing-badge"><Headphones size={16} /> {t("landingBadge")}</div>
       <h1>{t("chooseTitle")}</h1>
       <p>{t("chooseSubtitle")}</p>
       <div className="language-grid">
@@ -183,7 +184,7 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
           <span className="flag-orb">{language.flag}</span>
           <span className="language-title"><b>{language.nativeName}</b><small>{language.name}</small></span>
           <span className="language-description">{descriptions[locale][language.id]}</span>
-          <span className="language-stats">{language.id==="en"?<span><BookOpen size={14}/>{englishCategoryCount??"…"} {t("library")}</span>:<span><Clock3 size={14}/>Coming soon</span>}</span>
+          <span className="language-stats">{language.id==="en"?<span><BookOpen size={14}/>{englishCategoryCount??"…"} {t("topics")}</span>:<span><Clock3 size={14}/>{t("comingSoon")}</span>}</span>
           <span className="language-cta">{t("startLearning")} <ArrowRight size={17} /></span>
         </button>)}
       </div>
@@ -193,9 +194,9 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
   </div>;
 }
 
-function Logo() {
+function Logo({homeLabel}:{homeLabel?:string}) {
   return (
-    <div className="logo" aria-label="Me2Listen home">
+    <div className="logo" aria-label={homeLabel}>
       <span className="logo-mark"><img src="/me2write-favicon.svg" alt="" /></span>
       <span>me2<span>listen</span></span>
     </div>
@@ -206,7 +207,7 @@ function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { l
   const labels: Record<TargetLanguage, TranslationKey> = { en: "englishDictation", zh: "chineseDictation", ja: "japaneseDictation" };
   return <header className="landing-header learning-header">
     <div className="learning-brand">
-      <button className="logo-home" onClick={onHome} aria-label="Me2Listen home"><Logo /></button>
+      <button className="logo-home" onClick={onHome} aria-label={translate(locale,"logoHome")}><Logo /></button>
       <button className="dictation-button" onClick={onDictation}><Headphones size={17} /><span>{translate(locale, labels[language])}</span></button>
     </div>
     <div className="landing-actions">
@@ -244,7 +245,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label="Mở menu"><Menu size={21} /></button>
+        <button className="icon-button mobile-only" onClick={() => setMobileNav(true)} aria-label={t("openMenu")}><Menu size={21} /></button>
         <button className="logo-button" onClick={onHome}><Logo /></button>
         <div className="header-search">
           <Search size={18} />
@@ -259,7 +260,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
       </header>
 
       <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
-        <button className="icon-button close-nav" onClick={() => setMobileNav(false)} aria-label="Đóng menu"><X size={20} /></button>
+        <button className="icon-button close-nav" onClick={() => setMobileNav(false)} aria-label={t("closeMenu")}><X size={20} /></button>
         <nav>
           <p className="nav-label">{t("learning")}</p>
           <button className="nav-item" onClick={onHome}><Home size={19} />{t("home")}</button>
@@ -268,10 +269,10 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
           <a className="nav-item" href="#saved"><Heart size={19} />{t("saved")}</a>
           <LeaderboardLauncher locale={locale} nav />
           <p className="nav-label">{languageMeta.flag} {languageMeta.nativeName}</p>
-          <button className="nav-item topic active-topic"><span className="topic-dot coral" />Short stories</button>
-          <button className="nav-item topic"><span className="topic-dot blue" />Daily conversations</button>
-          <button className="nav-item topic"><span className="topic-dot yellow" />Travel & culture</button>
-          <button className="nav-item topic"><span className="topic-dot green" />Work & business</button>
+          <button className="nav-item topic active-topic"><span className="topic-dot coral" />{t("shortStories")}</button>
+          <button className="nav-item topic"><span className="topic-dot blue" />{t("dailyConversations")}</button>
+          <button className="nav-item topic"><span className="topic-dot yellow" />{t("travelCulture")}</button>
+          <button className="nav-item topic"><span className="topic-dot green" />{t("workBusiness")}</button>
         </nav>
         <div className="sidebar-bottom">
           <button className="nav-item" onClick={() => setShowSettings(true)}><Settings size={19} />{t("settings")}</button>
@@ -279,7 +280,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
         </div>
       </aside>
 
-      {mobileNav && <button className="nav-backdrop" onClick={() => setMobileNav(false)} aria-label="Đóng menu" />}
+      {mobileNav && <button className="nav-backdrop" onClick={() => setMobileNav(false)} aria-label={t("closeMenu")} />}
 
       <main className="library-main">
         <section className="welcome-row">
@@ -349,7 +350,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
           }) : <div className="empty-state"><Search size={28} /><h3>{t("noLessons")}</h3><p>{t("retryFilter")}</p></div>}
         </section>
 
-        <footer>© 2026 Me2Listen · Luyện nghe tốt hơn, từng câu một.</footer>
+        <footer>© 2026 Me2Listen · {t("footerTagline")}</footer>
       </main>
 
       {showSettings && <SettingsModal t={t} onClose={() => setShowSettings(false)} onReset={() => { clearProgress(); location.reload(); }} />}
@@ -452,10 +453,10 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
   return (
     <div className="practice-shell">
       <header className="practice-header">
-        <button className="logo-button" onClick={onHome}><Logo /></button>
+        <button className="logo-button" onClick={onHome} aria-label={t("logoHome")}><Logo /></button>
         <button className="back-link" onClick={onBack}><ArrowLeft size={18} /> {t("backLibrary")}</button>
-        <div className="practice-title"><span>{lesson.emoji}</span><div><b>{lesson.number}. {lesson.title}</b><small><span className={`level-dot ${levelClass[lesson.level]}`} />{lesson.level} · Giọng {lesson.accent}</small></div></div>
-        <div className="header-progress"><span><b>{lessonDone}</b> / {lesson.sentences.length} câu</span><div><i style={{ width: `${percent}%` }} /></div></div>
+        <div className="practice-title"><span>{lesson.emoji}</span><div><b>{lesson.number}. {lesson.title}</b><small><span className={`level-dot ${levelClass[lesson.level]}`} />{lesson.level} · {t("voice")} {lesson.accent}</small></div></div>
+        <div className="header-progress"><span><b>{lessonDone}</b> / {lesson.sentences.length} {t("sentences")}</span><div><i style={{ width: `${percent}%` }} /></div></div>
         <div className="practice-user-actions"><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div>
       </header>
 
@@ -464,8 +465,8 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
           <div className="step-label"><span>{t("sentence").toUpperCase()} {index + 1} / {lesson.sentences.length}</span><i /></div>
 
           <div className="audio-stage">
-            <AudioSegmentPlayer src={resolveAudioUrl(lesson.audioKey ?? sentence.audio) ?? ""} startMs={sentence.startMs ?? 0} endMs={sentence.endMs ?? 4000} playbackRate={speed} repeat={repeat} />
-            <button className={`play-main ${playing ? "playing" : ""}`} onClick={() => playing && audioRef.current && !audioRef.current.paused ? audioRef.current.pause() : playSentence()} aria-label="Phát câu">
+            <AudioSegmentPlayer locale={locale} src={resolveAudioUrl(lesson.audioKey ?? sentence.audio) ?? ""} startMs={sentence.startMs ?? 0} endMs={sentence.endMs ?? 4000} playbackRate={speed} repeat={repeat} />
+            <button className={`play-main ${playing ? "playing" : ""}`} onClick={() => playing && audioRef.current && !audioRef.current.paused ? audioRef.current.pause() : playSentence()} aria-label={lessonT(locale,playing?"pauseSentence":"playSentence")}>
               {playing ? <Pause size={27} fill="currentColor" /> : <Play size={29} fill="currentColor" />}
             </button>
             <div className="fake-wave" aria-hidden="true">{Array.from({ length: 54 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 17) % 31)}px` }} />)}</div>
@@ -510,7 +511,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
         </aside>
       </main>
 
-      {showTranscript && <TranscriptModal lesson={lesson} audioUrl={lesson.audioKey ? resolveAudioUrl(lesson.audioKey) : undefined} t={t} onClose={() => setShowTranscript(false)} onPlay={(text) => speak(text, speed, lesson.accent)} />}
+      {showTranscript && <TranscriptModal lesson={lesson} audioUrl={lesson.audioKey ? resolveAudioUrl(lesson.audioKey) : undefined} locale={locale} t={t} onClose={() => setShowTranscript(false)} onPlay={(text) => speak(text, speed, lesson.accent)} />}
     </div>
   );
 }
@@ -531,7 +532,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
   const saveName = async () => {
     setSaving(true); setError("");
     try { await auth.rename(name); setEditing(false); setOpen(false); }
-    catch { setError("2–40 characters, without control characters."); }
+    catch { setError(t("displayNameValidation")); }
     finally { setSaving(false); }
   };
 
@@ -540,11 +541,11 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     {open && <div className="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
-      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin"); setOpen(false); }}><Library size={16} />Content management</button>}
+      {auth.user.isAdmin && <button onClick={() => { navigateToHash("/admin"); setOpen(false); }}><Library size={16} />{t("contentManagement")}</button>}
       <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}
-    {editing && <div className="modal-backdrop" onMouseDown={() => setEditing(false)}><section className="modal name-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setEditing(false)}><X size={20} /></button><span className="overline">{t("editName").toUpperCase()}</span><h2>{t("displayName")}</h2><input value={name} maxLength={40} autoFocus onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveName(); }} />{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button onClick={() => setEditing(false)}>{t("cancel")}</button><button className="primary-button" disabled={saving || [...name.trim()].length < 2} onClick={() => void saveName()}>{t("save")}</button></div></section></div>}
+    {editing && <div className="modal-backdrop" onMouseDown={() => setEditing(false)}><section className="modal name-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setEditing(false)} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline">{t("editName").toUpperCase()}</span><h2>{t("displayName")}</h2><input aria-label={t("displayName")} value={name} maxLength={40} autoFocus onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveName(); }} />{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button onClick={() => setEditing(false)}>{t("cancel")}</button><button className="primary-button" disabled={saving || [...name.trim()].length < 2} onClick={() => void saveName()}>{t("save")}</button></div></section></div>}
   </div>;
 }
 
@@ -568,7 +569,7 @@ function LeaderboardModal({ locale, onClose }: { locale: UiLocale; onClose: () =
 
   const top = leaders.filter((entry) => entry.rank <= 50);
   const currentOutside = leaders.find((entry) => entry.user_id === auth.user?.id && entry.rank > 50);
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal leaderboard-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline"><Medal size={14} /> {t("leaderboard").toUpperCase()}</span><h2>{t("leaderboardTitle")}</h2><div className="period-tabs">{(["day", "week", "month", "year"] as const).map((item) => <button className={period === item ? "active" : ""} key={item} onClick={() => setPeriod(item)}>{t(item)}</button>)}</div>
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal leaderboard-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline"><Medal size={14} /> {t("leaderboard").toUpperCase()}</span><h2>{t("leaderboardTitle")}</h2><div className="period-tabs">{(["day", "week", "month", "year"] as const).map((item) => <button className={period === item ? "active" : ""} key={item} onClick={() => setPeriod(item)}>{t(item)}</button>)}</div>
     <div className="leader-list">{loading ? Array.from({ length: 5 }, (_, index) => <div className="leader-skeleton" key={index} />) : top.length ? top.map((entry) => <LeaderRow key={entry.user_id} entry={entry} current={entry.user_id === auth.user?.id} t={t} />) : <div className="empty-leaders"><Trophy size={27} /><p>{t("emptyLeaderboard")}</p></div>}</div>
     {currentOutside && <div className="current-rank"><small>{t("yourPosition")}</small><LeaderRow entry={currentOutside} current t={t} /></div>}
   </section></div>;
@@ -579,12 +580,12 @@ function LeaderRow({ entry, current, t }: { entry: LeaderboardEntry; current: bo
   return <div className={`leader-row ${current ? "is-current" : ""}`}><span className={`rank rank-${entry.rank}`}>{entry.rank <= 3 ? ["🥇", "🥈", "🥉"][entry.rank - 1] : entry.rank}</span><span className="leader-avatar">{entry.avatar_url ? <img src={entry.avatar_url} alt="" referrerPolicy="no-referrer" /> : initials}</span><div className="leader-name"><b>{entry.display_name}</b><small>{Math.round(entry.active_seconds / 60)} {t("activeMinutes")} · {entry.completed_sentences} {t("sentences")}</small></div><strong>{entry.points} <small>{t("points")}</small></strong></div>;
 }
 
-function TranscriptModal({ lesson, audioUrl, t, onClose, onPlay }: { lesson: Lesson; audioUrl?: string; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal transcript-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("fullTranscript")}</span><h2>{lesson.title}</h2><p className="modal-summary">{lesson.summary}</p>{audioUrl && <audio className="full-transcript-audio" controls preload="metadata" src={audioUrl} aria-label="Full lesson audio" />}<div className="transcript-lines">{lesson.sentences.map((sentence, index) => <button key={sentence.id} onClick={() => onPlay(sentence.text)}><span>{index + 1}</span><div><b>{sentence.text}</b><small>{sentence.translation}</small></div><Play size={15} /></button>)}</div></section></div>;
+function TranscriptModal({ lesson, audioUrl, locale, t, onClose, onPlay }: { lesson: Lesson; audioUrl?: string; locale:UiLocale; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal transcript-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline">{t("fullTranscript")}</span><h2>{lesson.title}</h2><p className="modal-summary">{lesson.summary}</p>{audioUrl && <audio className="full-transcript-audio" controls preload="metadata" src={audioUrl} aria-label={lessonT(locale,"fullLessonAudio")} />}<div className="transcript-lines">{lesson.sentences.map((sentence, index) => <button key={sentence.id} onClick={() => onPlay(sentence.text)}><span>{index + 1}</span><div><b>{sentence.text}</b><small>{sentence.translation}</small></div><Play size={15} /></button>)}</div></section></div>;
 }
 
 function SettingsModal({ t, onClose, onReset }: { t: ReturnType<typeof getT>; onClose: () => void; onReset: () => void }) {
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal settings-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={20} /></button><span className="overline">{t("settings").toUpperCase()}</span><h2>{t("learningExperience")}</h2><div className="setting-row"><div><b>{t("autoPlay")}</b><small>{t("autoPlayHint")}</small></div><label className="switch"><input type="checkbox" /><i /></label></div><div className="setting-row"><div><b>{t("showTranslation")}</b><small>{t("showTranslationHint")}</small></div><label className="switch"><input type="checkbox" defaultChecked /><i /></label></div><button className="danger-button" onClick={onReset}>{t("reset")}</button></section></div>;
+  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal settings-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline">{t("settings").toUpperCase()}</span><h2>{t("learningExperience")}</h2><div className="setting-row"><div><b>{t("autoPlay")}</b><small>{t("autoPlayHint")}</small></div><label className="switch"><input type="checkbox" /><i /></label></div><div className="setting-row"><div><b>{t("showTranslation")}</b><small>{t("showTranslationHint")}</small></div><label className="switch"><input type="checkbox" defaultChecked /><i /></label></div><button className="danger-button" onClick={onReset}>{t("reset")}</button></section></div>;
 }
 
 export default App;

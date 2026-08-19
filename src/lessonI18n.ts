@@ -8,11 +8,11 @@ const messages = {
 } as const satisfies Record<UiLocale, Record<string, string>>;
 
 const supplementalMessages = {
-  vi: { nextLesson: "Bài nghe tiếp theo", checkShortcut: "Nhấn Enter để kiểm tra", skipShortcut: "Nhấn Esc để bỏ qua" },
-  en: { nextLesson: "Next listening lesson", checkShortcut: "Press Enter to check", skipShortcut: "Press Esc to skip" },
-  zh: { nextLesson: "下一节听力课", checkShortcut: "按 Enter 检查", skipShortcut: "按 Esc 跳过" },
-  ja: { nextLesson: "次のリスニングレッスン", checkShortcut: "Enterで確認", skipShortcut: "Escでスキップ" },
-} as const satisfies Record<UiLocale, Record<"nextLesson" | "checkShortcut" | "skipShortcut", string>>;
+  vi: { nextLesson: "Bài nghe tiếp theo", checkShortcut: "Nhấn Enter để kiểm tra", skipShortcut: "Nhấn Esc để bỏ qua", playSentence:"Phát câu", pauseSentence:"Tạm dừng câu", seekSentence:"Tua trong câu", repeatSentence:"Nghe lại câu", audioConnectionError:"Không thể phát âm thanh. Hãy kiểm tra kết nối rồi thử lại.", fullLessonAudio:"Audio toàn bài" },
+  en: { nextLesson: "Next listening lesson", checkShortcut: "Press Enter to check", skipShortcut: "Press Esc to skip", playSentence:"Play sentence", pauseSentence:"Pause sentence", seekSentence:"Seek within sentence", repeatSentence:"Repeat sentence", audioConnectionError:"Audio is unavailable. Check your connection and try again.", fullLessonAudio:"Full lesson audio" },
+  zh: { nextLesson: "下一节听力课", checkShortcut: "按 Enter 检查", skipShortcut: "按 Esc 跳过", playSentence:"播放句子", pauseSentence:"暂停句子", seekSentence:"在句子中定位", repeatSentence:"重播句子", audioConnectionError:"音频无法播放。请检查网络连接后重试。", fullLessonAudio:"完整课程音频" },
+  ja: { nextLesson: "次のリスニングレッスン", checkShortcut: "Enterで確認", skipShortcut: "Escでスキップ", playSentence:"文を再生", pauseSentence:"文を一時停止", seekSentence:"文の中を移動", repeatSentence:"文をもう一度再生", audioConnectionError:"音声を再生できません。接続を確認して再試行してください。", fullLessonAudio:"レッスン全体の音声" },
+} as const satisfies Record<UiLocale, Record<string, string>>;
 
 type SupplementalMessageKey = keyof typeof supplementalMessages.en;
 export type LessonMessageKey = keyof typeof messages.en | SupplementalMessageKey;
