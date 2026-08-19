@@ -83,6 +83,7 @@ interface AuthContextValue {
   resetListeningLessonProgress: (lessonId: string) => Promise<void>;
   setListeningLessonFavorite: (lessonId: string, favorite: boolean) => Promise<{ lessonId: string; starCount: number; isStarred: boolean }>;
   saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
+  adminCreateSection: (input: { categoryId: string; title: string; description?: string }) => Promise<{ section: { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string } }>;
   adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
   adminGetImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
@@ -91,6 +92,7 @@ interface AuthContextValue {
   adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminUpdateLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminDeleteLesson: (lessonId: string) => Promise<void>;
+  adminDeleteLessons: (lessonIds: string[]) => Promise<{ deleted: string[]; failed: Array<{ lessonId: string; error: string }> }>;
   getTranslationLanguages: (lessonId:string) => Promise<TranslationLanguageOption[]>;
   getLessonTranslations: (lessonId:string,languageCode:string) => Promise<{approved:SentenceTranslation[];contributions:SentenceTranslation[];set:{status:string;machineStatus:string;lastError:string|null}|null}>;
   addTranslationLanguage: (code:string) => Promise<TranslationLanguageOption>;
@@ -239,6 +241,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({ ...user, listeningPreferences:result.preferences });
       return result.preferences;
     },
+    adminCreateSection: async (input) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api("/api/listening/admin/sections", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+    },
     adminImportLesson: async (form) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       return api("/api/listening/admin/import", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
@@ -270,6 +276,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminDeleteLesson: async (lessonId) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}`, { method: "DELETE", headers: { "X-CSRF-Token": csrf } });
+    },
+    adminDeleteLessons: async (lessonIds) => {
+      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
+      return api("/api/listening/admin/lessons", { method: "DELETE", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ lessonIds }) });
     },
     getTranslationLanguages: async (lessonId) => (await api<{languages:TranslationLanguageOption[]}>(`/api/listening/translation-languages?lessonId=${encodeURIComponent(lessonId)}`)).languages,
     getLessonTranslations: async (lessonId,languageCode) => api(`/api/listening/translations?lessonId=${encodeURIComponent(lessonId)}&languageCode=${encodeURIComponent(languageCode)}`),

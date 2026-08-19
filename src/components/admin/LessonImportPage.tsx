@@ -8,7 +8,8 @@ import { readAudioDuration } from "../../lib/media";
 import type { UiLocale } from "../../types";
 import { AdminLayout } from "./AdminLayout";
 
-interface SectionOption { section_id: string; category_name: string; section_title: string; language_code: string }
+interface SectionOption { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string }
+interface CategoryOption { category_id: string; category_name: string; language_code: string }
 interface ReviewSentence { id: string; position: number; text: string; startMs: number; endMs: number }
 interface ImportError { value: string; fallback: AdminImportMessageKey }
 type ImportMode = "ai" | "non_ai";
@@ -25,7 +26,13 @@ async function getJson<T>(path: string): Promise<T> {
 export function LessonImportPage({ onHome, locale }: { onHome: () => void; locale: UiLocale }) {
   const auth = useAuth();
   const [sections, setSections] = useState<SectionOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [sectionId, setSectionId] = useState("");
+  const [showSectionCreator, setShowSectionCreator] = useState(false);
+  const [newSectionCategoryId, setNewSectionCategoryId] = useState("");
+  const [newSectionTitle, setNewSectionTitle] = useState("");
+  const [newSectionDescription, setNewSectionDescription] = useState("");
+  const [sectionNotice, setSectionNotice] = useState(false);
   const [mode, setMode] = useState<ImportMode>("ai");
   const [inputMethod, setInputMethod] = useState<InputMethod>("files");
   const [level, setLevel] = useState("");
@@ -47,10 +54,12 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
 
   useEffect(() => {
     if (!auth.user?.isAdmin) return;
-    void getJson<{ sections: SectionOption[] }>("/api/listening/admin/bootstrap")
+    void getJson<{ categories: CategoryOption[]; sections: SectionOption[] }>("/api/listening/admin/bootstrap")
       .then(result => {
+        setCategories(result.categories);
         setSections(result.sections);
         setSectionId(current => current || result.sections[0]?.section_id || "");
+        setNewSectionCategoryId(current => current || result.categories[0]?.category_id || "");
       })
       .catch(reason => setError(toImportError(reason, "loadSectionsFailed")));
   }, [auth.user?.isAdmin]);
@@ -90,6 +99,18 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
       const result = await auth.adminImportLesson(form);
       setLessonId(result.lessonId); setReview(result.sentences as ReviewSentence[]);
     } catch (reason) { setError(toImportError(reason, "aiImportFailed")); }
+    finally { setBusy(false); }
+  };
+
+  const createSection = async () => {
+    setBusy(true); setError(undefined); setSectionNotice(false);
+    try {
+      const result = await auth.adminCreateSection({ categoryId: newSectionCategoryId, title: newSectionTitle, description: newSectionDescription });
+      const section = result.section;
+      setSections(current => [...current, section]);
+      setSectionId(section.section_id);
+      setNewSectionTitle(""); setNewSectionDescription(""); setShowSectionCreator(false); setSectionNotice(true);
+    } catch (reason) { setError(toImportError(reason, "createSectionFailed")); }
     finally { setBusy(false); }
   };
 
@@ -154,6 +175,8 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
     <p><a href="/admin/listening/manage">{t("manageLessons")}</a></p>
     <div className="import-mode-tabs"><button className={mode === "ai" ? "active" : ""} onClick={() => setMode("ai")}>{t("aiImport")}</button><button className={mode === "non_ai" ? "active" : ""} onClick={() => setMode("non_ai")}>{t("nonAiImport")}</button></div>
     {error && <p className="form-error" role="alert">{translateAdminImportError(locale, error.value, error.fallback)}</p>}
+    {sectionNotice && <p className="form-success" role="status">{t("sectionCreated")}</p>}
+    {!lessonId && !batch && <div className="import-section-creator"><button className="admin-inline-link" type="button" onClick={() => { setShowSectionCreator(current => !current); setSectionNotice(false); const categoryId = sections.find(item => item.section_id === sectionId)?.category_id; if (categoryId) setNewSectionCategoryId(categoryId); }}>{showSectionCreator ? t("cancelCreateSection") : t("createSection")}</button>{showSectionCreator && <form onSubmit={event => { event.preventDefault(); void createSection(); }}><h2>{t("newSection")}</h2><label>{t("category")}<select required value={newSectionCategoryId} onChange={event => setNewSectionCategoryId(event.target.value)}>{categories.map(item => <option key={item.category_id} value={item.category_id}>{item.language_code.toUpperCase()} / {item.category_name}</option>)}</select></label><label>{t("sectionTitle")}<input required maxLength={200} value={newSectionTitle} onChange={event => setNewSectionTitle(event.target.value)} /></label><label>{t("sectionDescription")}<textarea maxLength={1000} value={newSectionDescription} onChange={event => setNewSectionDescription(event.target.value)} /></label><div><button type="button" disabled={busy} onClick={() => setShowSectionCreator(false)}>{t("cancelCreateSection")}</button><button className="primary-button" disabled={busy || !newSectionCategoryId || !newSectionTitle.trim()}>{busy ? t("creatingSection") : t("createSection")}</button></div></form>}</div>}
     {mode === "ai" ? <section>
       <SectionAndLevel locale={locale} sections={sections} sectionId={sectionId} level={level} onSection={setSectionId} onLevel={setLevel} />
       {!lessonId ? <form className="admin-import" onSubmit={event => { event.preventDefault(); void processAi(); }}>

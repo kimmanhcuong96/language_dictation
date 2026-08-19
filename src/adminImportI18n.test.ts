@@ -18,6 +18,7 @@ describe("admin import i18n", () => {
 
   it("localizes known backend errors and statuses", () => {
     expect(translateAdminImportError("vi", "missing_srt", "itemFailed")).toBe("Thiếu SRT");
+    expect(translateAdminImportError("vi", "invalid_section_metadata", "createSectionFailed")).toBe(adminImportT("vi", "createSectionFailed"));
     expect(translateAdminImportError("ja", "pre_timed_srt_timing_invalid: cue 2", "itemFailed")).not.toContain("pre_timed");
     expect(adminImportStatus("zh", "COMPLETED")).toBe("已完成");
   });

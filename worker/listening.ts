@@ -42,6 +42,7 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "DELETE" && url.pathname === "/api/listening/progress/lesson") return mutationValid ? resetLessonProgress(request, env, session) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
   if ((request.method === "PUT" || request.method === "DELETE") && /^\/api\/listening\/lessons\/[\w-]+\/favorite$/u.test(url.pathname)) return mutationValid ? setLessonFavorite(request, env, session, url) : json({ error: session ? "invalid_csrf" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/bootstrap") return isAdmin(env, session) ? getAdminBootstrap(env) : json({ error: "forbidden" }, 403);
+  if (request.method === "POST" && url.pathname === "/api/listening/admin/sections") return isAdmin(env, session) && mutationValid ? createAdminSection(request, env) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) ? getAdminLessons(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getAdminLesson(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "POST" && url.pathname === "/api/listening/admin/import") return isAdmin(env, session) && mutationValid ? importLesson(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
@@ -51,6 +52,7 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url,ctx) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+\/review$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? reviewLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "DELETE" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) && mutationValid ? deleteLessons(request, env) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? deleteLesson(env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   return json({ error: "not_found" }, 404);
 }
@@ -368,25 +370,63 @@ async function resetLessonProgress(request: Request, env: Env, session: Listenin
 }
 
 async function getAdminBootstrap(env: Env) {
-  const rows = await sqlFor(env)`SELECT l.code AS language_code,c.id AS category_id,c.name AS category_name,s.id AS section_id,s.title AS section_title FROM languages l JOIN listening_categories c ON c.language_id=l.id JOIN listening_sections s ON s.category_id=c.id WHERE l.is_enabled=true ORDER BY l.sort_order,c.sort_order,s.sort_order`;
-  return json({ sections: rows });
+  const sql = sqlFor(env);
+  const [categories,sections] = await Promise.all([
+    sql`SELECT l.code AS language_code,c.id AS category_id,c.name AS category_name FROM languages l JOIN listening_categories c ON c.language_id=l.id WHERE l.is_enabled=true ORDER BY l.sort_order,c.sort_order,c.name`,
+    sql`SELECT l.code AS language_code,c.id AS category_id,c.name AS category_name,s.id AS section_id,s.title AS section_title FROM languages l JOIN listening_categories c ON c.language_id=l.id JOIN listening_sections s ON s.category_id=c.id WHERE l.is_enabled=true ORDER BY l.sort_order,c.sort_order,s.sort_order,s.number`,
+  ]);
+  return json({ categories,sections });
+}
+
+async function createAdminSection(request: Request, env: Env) {
+  let body: Record<string, unknown>;
+  try { body = await boundedJson<Record<string, unknown>>(request); }
+  catch (error) { return error instanceof RequestBodyError ? json({ error: error.message }, error.status) : json({ error: "invalid_json" }, 400); }
+  const categoryId = typeof body.categoryId === "string" ? validId(body.categoryId) : null;
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const description = typeof body.description === "string" ? body.description.trim() : "";
+  if (!categoryId || !title || title.length > 200 || description.length > 1000) return json({ error: "invalid_section_metadata" }, 422);
+  const sql = sqlFor(env);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const id = crypto.randomUUID();
+      const rows = await sql`WITH next_section AS (
+        SELECT c.id AS category_id,COALESCE(MAX(s.number),0)::int+1 AS number,COALESCE(MAX(s.sort_order),0)::int+1 AS sort_order,l.code AS language_code,c.name AS category_name
+        FROM listening_categories c JOIN languages l ON l.id=c.language_id LEFT JOIN listening_sections s ON s.category_id=c.id
+        WHERE c.id=${categoryId} AND l.is_enabled=true GROUP BY c.id,l.code
+      ), inserted AS (
+        INSERT INTO listening_sections(id,category_id,number,title,description,sort_order,is_published)
+        SELECT ${id},category_id,number,${title},${description || null},sort_order,true FROM next_section
+        RETURNING id,category_id,title
+      ), bumped AS (
+        UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true AND EXISTS(SELECT 1 FROM inserted)
+      )
+      SELECT i.id AS section_id,i.category_id,i.title AS section_title,n.language_code,n.category_name FROM inserted i JOIN next_section n ON n.category_id=i.category_id`;
+      if (!rows.length) return json({ error: "invalid_category" }, 422);
+      return json({ section: rows[0] }, 201);
+    } catch (error) {
+      if (postgresErrorCode(error) !== "23505" || attempt === 1) return json({ error: "section_create_failed" }, 500);
+    }
+  }
+  return json({ error: "section_create_failed" }, 500);
 }
 
 async function getAdminLessons(env: Env, url: URL) {
-  const query = url.searchParams.get("q")?.trim() ?? "", language = url.searchParams.get("language") ?? "all", status = url.searchParams.get("status") ?? "all";
+  const query = url.searchParams.get("q")?.trim() ?? "", exactPath = url.searchParams.get("path")?.trim() ?? "", language = url.searchParams.get("language") ?? "all", status = url.searchParams.get("status") ?? "all";
+  if (exactPath.length > 400) return json({ error: "invalid_path" }, 422);
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
   const sql = sqlFor(env);
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (${query}='' OR l.title ILIKE ${`%${query}%`} OR l.slug ILIKE ${`%${query}%`}) AND (${language}='all' OR lang.code=${language}) AND (${status}='all' OR (${status}='published' AND l.is_published=true) OR (${status}='draft' AND l.is_published=false)) ORDER BY lang.code,c.sort_order,s.sort_order,l.sort_order,l.title LIMIT ${limit}`;
-  return json({ lessons: rows.map((row) => ({ ...row, path: lessonPath(String(row.level ?? "all"), String(row.category_slug), String(row.slug)) })) });
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (${query}='' OR l.title ILIKE ${`%${query}%`} OR l.slug ILIKE ${`%${query}%`} OR p.path ILIKE ${`%${query}%`}) AND (${exactPath}='' OR p.path=${exactPath}) AND (${language}='all' OR lang.code=${language}) AND (${status}='all' OR (${status}='published' AND l.is_published=true) OR (${status}='draft' AND l.is_published=false)) ORDER BY p.path,l.title LIMIT ${limit}`;
+  return json({ lessons: rows });
 }
 
 async function getAdminLesson(env: Env, url: URL) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length)); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
   const sql = sqlFor(env);
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.id=${lessonId}`;
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.id=${lessonId}`;
   if (!rows.length) return json({ error: "not_found" }, 404);
   const sentences = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
-  return json({ lesson: { ...rows[0], path: lessonPath(String(rows[0].level ?? "all"), String(rows[0].category_slug), String(rows[0].slug)), sentences } });
+  return json({ lesson: { ...rows[0], sentences } });
 }
 
 interface BatchSourceFile { name: string; file: File; }
@@ -723,7 +763,30 @@ async function updateLesson(request: Request, env: Env, url: URL,ctx:ExecutionCo
 
 async function deleteLesson(env: Env, url: URL) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length)); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
-  const sql = sqlFor(env), rows = await sql`SELECT id,audio_key,import_job_id FROM listening_lessons WHERE id=${lessonId}`; const lesson = rows[0]; if (!lesson) return json({ error: "not_found" }, 404);
+  const result = await deleteLessonResource(env, lessonId);
+  return result.ok ? json({ ok: true, deleted: [lessonId] }) : json({ error: result.error, requestId: lessonId }, result.status);
+}
+
+async function deleteLessons(request: Request, env: Env) {
+  let body: Record<string, unknown>;
+  try { body = await boundedJson<Record<string, unknown>>(request); }
+  catch (error) { return error instanceof RequestBodyError ? json({ error: error.message }, error.status) : json({ error: "invalid_json" }, 400); }
+  if (!Array.isArray(body.lessonIds)) return json({ error: "invalid_lesson_ids" }, 422);
+  const lessonIds = [...new Set(body.lessonIds.map((item) => typeof item === "string" ? validId(item) : null))];
+  if (!lessonIds.length || lessonIds.length > 50 || lessonIds.some((item) => !item)) return json({ error: "invalid_lesson_ids" }, 422);
+  const deleted: string[] = [], failed: Array<{ lessonId: string; error: string }> = [];
+  for (const lessonId of lessonIds as string[]) {
+    const result = await deleteLessonResource(env, lessonId);
+    if (result.ok) deleted.push(lessonId);
+    else failed.push({ lessonId, error: result.error });
+  }
+  return json({ ok: !failed.length, deleted, failed }, failed.length ? 207 : 200);
+}
+
+type LessonDeleteResult = { ok: true } | { ok: false; error: string; status: number };
+
+async function deleteLessonResource(env: Env, lessonId: string): Promise<LessonDeleteResult> {
+  const sql = sqlFor(env), rows = await sql`SELECT id,audio_key,import_job_id FROM listening_lessons WHERE id=${lessonId}`; const lesson = rows[0]; if (!lesson) return { ok: false, error: "not_found", status: 404 };
   const audioKey = lesson.audio_key ? String(lesson.audio_key) : null;
   let audioBackup: { body: ArrayBuffer; httpMetadata?: R2HTTPMetadata; customMetadata?: Record<string,string> } | null = null;
   if (audioKey) {
@@ -731,7 +794,7 @@ async function deleteLesson(env: Env, url: URL) {
       const object = await env.LISTENING_AUDIO.get(audioKey);
       if (object) audioBackup = { body: await object.arrayBuffer(), httpMetadata: object.httpMetadata, customMetadata: object.customMetadata };
       await env.LISTENING_AUDIO.delete(audioKey);
-    } catch { return json({ error: "resource_cleanup_failed", requestId: lessonId }, 500); }
+    } catch { return { ok: false, error: "resource_cleanup_failed", status: 500 }; }
   }
   try {
     await sql.transaction([
@@ -745,11 +808,11 @@ async function deleteLesson(env: Env, url: URL) {
   } catch {
     if (audioKey && audioBackup) {
       try { await env.LISTENING_AUDIO.put(audioKey, audioBackup.body, { httpMetadata: audioBackup.httpMetadata, customMetadata: audioBackup.customMetadata }); }
-      catch (restoreError) { console.error(JSON.stringify({ event:"lesson_delete_audio_restore_failed",lessonId,audioKey,message:restoreError instanceof Error?restoreError.message:"unknown" })); return json({ error:"lesson_delete_rollback_failed",requestId:lessonId },500); }
+      catch (restoreError) { console.error(JSON.stringify({ event:"lesson_delete_audio_restore_failed",lessonId,audioKey,message:restoreError instanceof Error?restoreError.message:"unknown" })); return { ok: false, error: "lesson_delete_rollback_failed", status: 500 }; }
     }
-    return json({ error: "lesson_delete_failed" }, 500);
+    return { ok: false, error: "lesson_delete_failed", status: 500 };
   }
-  return json({ ok: true });
+  return { ok: true };
 }
 
 async function scheduleTranslationsAfterContentChange(env:Env,ctx:ExecutionContext,lessonId:string,requestedBy:string){
