@@ -1,10 +1,12 @@
 import { parseSrt, validateAlignedSentences, type AlignedSentence } from "./ingestion";
-import { slugifyTitle, uniqueSlug } from "./slug";
+import { slugifyTitle } from "./slug";
+import { parsePackageTranslationFilename } from "./translationImport";
 
 export const NON_AI_IMPORT_LIMITS = {
-  maxLessons: 100,
+  maxLessons: 99,
   maxAudioBytes: 20 * 1024 * 1024,
   maxSrtBytes: 1024 * 1024,
+  maxTranslationBytes: 1024 * 1024,
   maxArchiveBytes: 40 * 1024 * 1024,
   maxExtractedBytes: 64 * 1024 * 1024,
   maxResources: 250,
@@ -13,44 +15,66 @@ export const NON_AI_IMPORT_LIMITS = {
 export interface ImportResourceDescriptor {
   name: string;
   size: number;
-  kind: "audio" | "srt" | "unsupported";
+  kind: "audio" | "srt" | "translation" | "unsupported";
+  translationLanguage?: string;
+  translationBasename?: string;
+  error?: string;
 }
 
 export interface ImportPairCandidate {
   key: string;
   lessonName: string;
   slug: string;
+  lessonOrder: number;
+  sourceFilename: string;
   audioName?: string;
   srtName?: string;
+  translations: Record<string, string>;
   errors: string[];
 }
 
-export function allocateImportCandidateSlugs(
+export function validateImportCandidateSlugs(
   candidates: ImportPairCandidate[],
   isUsed: (candidate: string) => boolean,
 ): ImportPairCandidate[] {
-  const reserved = new Set<string>();
+  const counts = new Map<string, number>();
+  for (const candidate of candidates) if (candidate.slug) counts.set(candidate.slug, (counts.get(candidate.slug) ?? 0) + 1);
   return candidates.map((candidate) => {
     if (!candidate.slug || candidate.errors.length) return { ...candidate };
-    const slug = uniqueSlug(candidate.slug, (value) => reserved.has(value) || isUsed(value));
-    reserved.add(slug);
-    return { ...candidate, slug };
+    const errors = [...candidate.errors];
+    if ((counts.get(candidate.slug) ?? 0) > 1) errors.push("duplicate_slug_in_batch");
+    if (isUsed(candidate.slug)) errors.push("duplicate_lesson_slug");
+    return { ...candidate, errors: [...new Set(errors)] };
   });
 }
 
 export function describeImportResource(name: string, size: number): ImportResourceDescriptor {
   const fileName = name.replace(/\\/gu, "/").split("/").at(-1) ?? "";
-  const extension = fileName.match(/\.([^.]+)$/u)?.[1]?.toLocaleLowerCase();
-  return { name, size, kind: extension === "mp3" ? "audio" : extension === "srt" ? "srt" : "unsupported" };
+  const rawExtension = fileName.match(/\.([^.]+)$/u)?.[1];
+  const extension = rawExtension?.toLocaleLowerCase();
+  if (rawExtension !== extension) return { name, size, kind: "unsupported", error: "invalid_lesson_filename" };
+  if (extension === "mp3") return { name, size, kind: "audio" };
+  if (extension === "srt") return { name, size, kind: "srt" };
+  if (extension === "txt") {
+    const parsed = parsePackageTranslationFilename(name);
+    if (!parsed) return { name, size, kind: "unsupported", error: "invalid_translation_filename" };
+    if (!parsed.language) return { name, size, kind: "translation", translationLanguage: parsed.languageCode, translationBasename: parsed.basename, error: `unsupported_translation_language:${parsed.languageCode}` };
+    return { name, size, kind: "translation", translationLanguage: parsed.language.code, translationBasename: parsed.basename };
+  }
+  return { name, size, kind: "unsupported" };
 }
 
-export function normalizeImportBasename(name: string): { key: string; lessonName: string; slug: string } | null {
-  const fileName = name.replace(/\\/gu, "/").split("/").at(-1)?.trim() ?? "";
-  const basename = fileName.replace(/\.[^.]+$/u, "").normalize("NFKC").replace(/\s+/gu, " ").trim();
-  if (!basename || basename === "." || basename === "..") return null;
-  const slug = slugifyTitle(basename);
+export function normalizeImportBasename(name: string): { key: string; lessonName: string; slug: string; lessonOrder: number; sourceFilename: string } | null {
+  const fileName = name.replace(/\\/gu, "/").split("/").at(-1) ?? "";
+  const basename = fileName.replace(/\.[^.]+$/u, "");
+  const match = basename.match(/^([0-9]{2})_(.+)$/u);
+  if (!match) return null;
+  const lessonOrder = Number(match[1]);
+  const lessonName = match[2];
+  if (lessonOrder < 1 || lessonOrder > 99 || !lessonName || lessonName === "." || lessonName === "..") return null;
+  const slug = slugifyTitle(lessonName);
   if (!slug) return null;
-  return { key: basename.toLowerCase(), lessonName: basename, slug };
+  return { key: basename, lessonName, slug, lessonOrder, sourceFilename: fileName };
 }
 
 export function pairImportResources(resources: ImportResourceDescriptor[]): ImportPairCandidate[] {
@@ -58,25 +82,32 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
   const unsupported: ImportPairCandidate[] = [];
   for (const resource of resources) {
     if (resource.kind === "unsupported") {
-      unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", errors: ["unsupported_file_type"] });
+      unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, translations: {}, errors: [resource.error ?? "unsupported_file_type"] });
       continue;
     }
-    const normalized = normalizeImportBasename(resource.name);
+    const normalized = normalizeImportBasename(resource.kind === "translation" ? resource.translationBasename ?? "" : resource.name);
     if (!normalized) {
-      unsupported.push({ key: `invalid:${resource.name}`, lessonName: resource.name, slug: "", errors: ["invalid_filename"] });
+      unsupported.push({ key: `invalid:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, translations: {}, errors: ["invalid_lesson_filename"] });
       continue;
     }
-    const pair = pairs.get(normalized.key) ?? { ...normalized, errors: [] };
+    const pair = pairs.get(normalized.key) ?? { ...normalized, translations: {}, errors: [] };
     if (normalized.lessonName.length > 200) pair.errors.push("lesson_name_too_long");
-    if (resource.size <= 0) pair.errors.push(resource.kind === "audio" ? "audio_empty" : "srt_empty");
+    if (resource.size <= 0 && resource.kind !== "translation") pair.errors.push(resource.kind === "audio" ? "audio_empty" : "srt_empty");
     if (resource.kind === "audio") {
       if (pair.audioName) pair.errors.push("duplicate_audio_file");
       else pair.audioName = resource.name;
       if (resource.size > NON_AI_IMPORT_LIMITS.maxAudioBytes) pair.errors.push("audio_too_large");
-    } else {
+    } else if (resource.kind === "srt") {
       if (pair.srtName) pair.errors.push("duplicate_srt_file");
       else pair.srtName = resource.name;
       if (resource.size > NON_AI_IMPORT_LIMITS.maxSrtBytes) pair.errors.push("srt_too_large");
+    } else {
+      const language = resource.translationLanguage!;
+      if (resource.error) pair.errors.push(resource.error);
+      else if (pair.translations[language]) pair.errors.push(`duplicate_translation_language:${language}`);
+      else pair.translations[language] = resource.name;
+      if (resource.size <= 0) pair.errors.push(`translation_empty:${language}`);
+      if (resource.size > NON_AI_IMPORT_LIMITS.maxTranslationBytes) pair.errors.push(`translation_too_large:${language}`);
     }
     pairs.set(normalized.key, pair);
   }
@@ -85,6 +116,9 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
     if (!candidate.audioName) candidate.errors.push("missing_mp3");
     if (!candidate.srtName) candidate.errors.push("missing_srt");
   }
+  const orderCounts = new Map<number, number>();
+  for (const candidate of candidates) orderCounts.set(candidate.lessonOrder, (orderCounts.get(candidate.lessonOrder) ?? 0) + 1);
+  for (const candidate of candidates) if ((orderCounts.get(candidate.lessonOrder) ?? 0) > 1) candidate.errors.push(`duplicate_lesson_order:${candidate.lessonOrder}`);
   return [...candidates, ...unsupported].map((candidate) => ({ ...candidate, errors: [...new Set(candidate.errors)] }));
 }
 

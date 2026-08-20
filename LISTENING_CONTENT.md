@@ -1,29 +1,20 @@
 # Listening lesson import
 
-The listening library stores metadata and sentence timestamps in Neon and keeps one original audio object per lesson in the `LISTENING_AUDIO` R2 bucket.
+1. Apply all migrations through `db/migrations/0014_lesson_filename_ordering.sql`.
+2. Configure `DATABASE_URL`, Google OAuth credentials, `ADMIN_EMAILS`, and the `LISTENING_AUDIO` R2 binding.
+3. Open `#/admin/listening` as an administrator.
 
-## Setup
+Lesson packages support direct files or ZIP archives:
 
-1. Create the configured bucket: `pnpm exec wrangler r2 bucket create me2listen-audio`.
-2. Apply database migrations with `pnpm db:migrate` in the intended environment.
-3. Set `DATABASE_URL`, Google OAuth secrets, `ADMIN_EMAILS`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN`, and `CLOUDFLARE_AI_MODEL` as Worker secrets or environment variables. All three Cloudflare AI variables are required; the AI token needs Workers AI Read/Write permissions. Do not commit their values.
-4. Deploy the Worker. The `LISTENING_AUDIO` binding is declared in `wrangler.jsonc`; Workers AI is called through the Cloudflare REST API.
+```text
+01_lesson.mp3
+01_lesson.srt
+01_lesson.vi.txt   # optional
+01_lesson.zh.txt   # optional
+01_lesson.ja.txt   # optional
+01_lesson.ko.txt   # optional
+```
 
-## Import and publish
+The strict `NN_` prefix (`01`–`99`) supplies the Section-scoped lesson order. The SRT supplies all source sentences and timing. Translation files are UTF-8 TXT with exactly one non-empty physical line per SRT cue. A package without translations remains valid. Validation covers the complete input, then valid lessons are imported independently so invalid or failed items do not block the remainder.
 
-Sign in with an email listed in `ADMIN_EMAILS` and open `#/admin/listening`. The page has two separate modes and localizes its UI/status/error messages from the selected interface locale; imported learning content is never translated.
-
-### AI Import
-
-1. Select the target section, optionally enter a level, enter the title, choose an audio file, and paste the canonical transcript with one sentence per line.
-2. Choose **Process with AI**. Workers AI is used only to map timestamps to the submitted lines. Speech present in the audio but absent from the transcript is ignored, and recognized speech never replaces the Admin's text.
-3. Play each generated segment and correct its text or `start_ms`/`end_ms` values.
-4. Choose **Publish**. The draft is public only after this explicit review step.
-
-AI imports are limited to 20 MB, 1 hour, 1,000 sentences, and 50,000 transcript characters. Alignment failures create no database or R2 resources. Persistence failures remove the lesson, sentence, import-job, and audio resources so the generated slug can be retried.
-
-### Non-AI Import
-
-Choose one or more matching `<lesson-name>.mp3`/`<lesson-name>.srt` pairs, or one ZIP containing such pairs. Direct files and ZIPs normalize into the same batch pipeline, including a batch of one. Validate the whole input, inspect the per-item preview, then explicitly confirm the valid lessons. Valid items publish independently; invalid/failed items remain visible and do not stop the batch. Resume and retry skip completed items.
-
-Apply `db/migrations/0008_batch_lesson_import.sql` before deploying this mode. The full contract is in [LESSON_IMPORT_SPEC.md](./LESSON_IMPORT_SPEC.md), with operating steps in [NON_AI_IMPORT.md](./NON_AI_IMPORT.md).
+Use the **Translation only** tab to add or replace one or more languages on an existing lesson. In this mode the selected lesson and language are authoritative; the TXT filename is irrelevant. Validation is completed before the atomic database transaction begins.

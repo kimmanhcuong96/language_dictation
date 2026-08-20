@@ -50,7 +50,7 @@ Backend là Cloudflare Worker trong `worker/index.ts`; frontend và API chạy c
    npx wrangler secret put GOOGLE_CLIENT_SECRET
    ```
 
-   Google machine translation hiện đang tắt. Bản dịch được lấy từ contribution của người dùng và chỉ hiển thị công khai sau khi admin duyệt.
+   Dự án không tích hợp Google Translate API hoặc dịch máy. Bản dịch được nhập từ file hoặc đóng góp thủ công và chỉ hiển thị công khai sau khi admin duyệt.
 
 5. Chạy migration và deploy:
 

@@ -1,47 +1,99 @@
 import { describe, expect, it } from "vitest";
-import { allocateImportCandidateSlugs, describeImportResource, normalizeImportBasename, pairImportResources, parseNonAiSrt } from "./nonAiImport";
+import { describeImportResource, normalizeImportBasename, pairImportResources, parseNonAiSrt, validateImportCandidateSlugs } from "./nonAiImport";
 
 describe("non-AI batch import", () => {
-  it("pairs MP3 and SRT resources by normalized basename", () => {
+  it("pairs MP3 and SRT resources by their exact filename stem", () => {
     const result = pairImportResources([
-      describeImportResource("English Greetings.MP3", 100),
-      describeImportResource("english greetings.srt", 100),
+      describeImportResource("01_English Greetings.mp3", 100),
+      describeImportResource("01_English Greetings.srt", 100),
     ]);
-    expect(result).toMatchObject([{ lessonName: "English Greetings", slug: "english-greetings", errors: [] }]);
+    expect(result).toMatchObject([{ lessonName: "English Greetings", slug: "english-greetings", lessonOrder: 1, errors: [] }]);
   });
 
   it("reports missing, unsupported and duplicate resources individually", () => {
     const result = pairImportResources([
-      describeImportResource("one.mp3", 100),
-      describeImportResource("two.srt", 100),
-      describeImportResource("notes.txt", 10),
-      describeImportResource("same.mp3", 100),
-      describeImportResource("same.MP3", 100),
-      describeImportResource("same.srt", 100),
+      describeImportResource("01_one.mp3", 100),
+      describeImportResource("02_two.srt", 100),
+      describeImportResource("notes.pdf", 10),
+      describeImportResource("03_same.mp3", 100),
+      describeImportResource("03_same.mp3", 100),
+      describeImportResource("03_same.srt", 100),
     ]);
     expect(result.find((item) => item.lessonName === "one")?.errors).toContain("missing_srt");
     expect(result.find((item) => item.lessonName === "two")?.errors).toContain("missing_mp3");
-    expect(result.find((item) => item.lessonName === "notes.txt")?.errors).toContain("unsupported_file_type");
+    expect(result.find((item) => item.lessonName === "notes.pdf")?.errors).toContain("unsupported_file_type");
     expect(result.find((item) => item.lessonName === "same")?.errors).toContain("duplicate_audio_file");
   });
 
-  it("allocates sequential slugs when separate ZIP resources generate the same slug", () => {
-    const candidates = pairImportResources(["One lesson.mp3", "One lesson.srt", "One--lesson.mp3", "One--lesson.srt"].map((name) => describeImportResource(name, 100)));
-    const result = allocateImportCandidateSlugs(candidates, () => false);
-    expect(result.map((item) => item.slug)).toEqual(["one-lesson", "one-lesson-1"]);
-    expect(result.every((item) => item.errors.length === 0)).toBe(true);
+  it("attaches supported translation files to their lesson package", () => {
+    const [result] = pairImportResources([
+      describeImportResource("01_business.mp3", 100),
+      describeImportResource("01_business.srt", 100),
+      describeImportResource("01_business.vi.txt", 100),
+      describeImportResource("01_business.zh.txt", 100),
+    ]);
+    expect(result.translations).toEqual({ vi: "01_business.vi.txt", zh: "01_business.zh.txt" });
+    expect(result.errors).toEqual([]);
   });
 
-  it("continues after slugs already reserved by persisted lessons", () => {
-    const candidates = pairImportResources(["One lesson.mp3", "One lesson.srt", "One--lesson.mp3", "One--lesson.srt"].map((name) => describeImportResource(name, 100)));
-    const existing = new Set(["one-lesson", "one-lesson-1"]);
-    const result = allocateImportCandidateSlugs(candidates, (slug) => existing.has(slug));
-    expect(result.map((item) => item.slug)).toEqual(["one-lesson-2", "one-lesson-3"]);
+  it("invalidates the package when a translation language is unsupported", () => {
+    const result = pairImportResources([
+      describeImportResource("01_business.mp3", 100),
+      describeImportResource("01_business.srt", 100),
+      describeImportResource("01_business.fr.txt", 100),
+    ]).find(candidate=>candidate.lessonName==="business");
+    expect(result?.errors).toContain("unsupported_translation_language:fr");
+  });
+
+  it("does not silently accept a spelled-out language token", () => {
+    const result = pairImportResources([
+      describeImportResource("01_business.mp3", 100),
+      describeImportResource("01_business.srt", 100),
+      describeImportResource("01_business.vietnamese.txt", 100),
+    ]).find(candidate=>candidate.lessonName==="business");
+    expect(result?.errors).toContain("unsupported_translation_language:vietnamese");
+  });
+
+  it("rejects duplicate generated slugs within one batch", () => {
+    const candidates = pairImportResources(["01_One lesson.mp3", "01_One lesson.srt", "02_One--lesson.mp3", "02_One--lesson.srt"].map((name) => describeImportResource(name, 100)));
+    const result = validateImportCandidateSlugs(candidates, () => false);
+    expect(result.map((item) => item.slug)).toEqual(["one-lesson", "one-lesson"]);
+    expect(result.every((item) => item.errors.includes("duplicate_slug_in_batch"))).toBe(true);
+  });
+
+  it("rejects a generated slug already used in the target section", () => {
+    const candidates = pairImportResources(["01_One lesson.mp3", "01_One lesson.srt"].map((name) => describeImportResource(name, 100)));
+    const result = validateImportCandidateSlugs(candidates, (slug) => slug === "one-lesson");
+    expect(result[0].errors).toContain("duplicate_lesson_slug");
   });
 
   it("derives understandable lesson names and validates standard SRT", () => {
-    expect(normalizeImportBasename("folder/001 Greetings.mp3")).toEqual({ key: "001 greetings", lessonName: "001 Greetings", slug: "001-greetings" });
+    expect(normalizeImportBasename("folder/09_Greetings.mp3")).toEqual({ key: "09_Greetings", lessonName: "Greetings", slug: "greetings", lessonOrder: 9, sourceFilename: "09_Greetings.mp3" });
+    expect(normalizeImportBasename("1_Greetings.mp3")).toBeNull();
+    expect(normalizeImportBasename("00_Greetings.mp3")).toBeNull();
+    expect(normalizeImportBasename("100_Greetings.mp3")).toBeNull();
+    expect(normalizeImportBasename("01-Greetings.mp3")).toBeNull();
+    expect(normalizeImportBasename("01 - Greetings.mp3")).toBeNull();
+    expect(normalizeImportBasename("Greetings_01.mp3")).toBeNull();
+    expect(normalizeImportBasename("Greetings.mp3")).toBeNull();
+    expect(describeImportResource("01_Greetings.MP3",100).error).toBe("invalid_lesson_filename");
     expect(parseNonAiSrt("1\n00:00:00,000 --> 00:00:01,000\nHello.\n\n2\n00:00:01,000 --> 00:00:02,000\nWorld.", 2000)).toHaveLength(2);
     expect(() => parseNonAiSrt("1\n00:00:00,000 --> 00:00:03,000\nToo long.", 2000)).toThrow("sentence_1_outside_audio");
+  });
+
+  it("does not pair stems that differ by case", () => {
+    const result = pairImportResources([describeImportResource("01_Lesson.mp3", 100), describeImportResource("01_lesson.srt", 100)]);
+    expect(result).toHaveLength(2);
+    expect(result.flatMap((item) => item.errors)).toEqual(expect.arrayContaining(["missing_mp3", "missing_srt"]));
+  });
+
+  it("rejects duplicate lesson orders even when lesson names differ", () => {
+    const result = pairImportResources(["01_First.mp3", "01_First.srt", "01_Second.mp3", "01_Second.srt"].map((name) => describeImportResource(name, 100)));
+    expect(result.every((item) => item.errors.includes("duplicate_lesson_order:1"))).toBe(true);
+  });
+
+  it("derives order from each filename instead of upload order", () => {
+    const result = pairImportResources(["07_Later.srt","02_Earlier.mp3","07_Later.mp3","02_Earlier.srt"].map((name)=>describeImportResource(name,100)));
+    expect(Object.fromEntries(result.map((item)=>[item.lessonName,item.lessonOrder]))).toEqual({Later:7,Earlier:2});
   });
 });

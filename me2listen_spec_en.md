@@ -139,16 +139,7 @@ Auth           Existing OAuth2 implementation
 i18n           Existing implementation
 ```
 
-The application may use:
-
-```text
-Cloudflare Queues
-Workers AI
-```
-
-for content ingestion where appropriate.
-
-Workers AI must **not** be used for runtime dictation answer checking.
+Lesson ingestion uses prepared MP3 audio and standard SRT timing. The application must not use Workers AI, another AI provider, or a machine-translation API for lesson import or runtime answer checking.
 
 ---
 
@@ -938,7 +929,7 @@ timestamp-synchronized active transcript highlighting
 
 The full transcript player may display the complete lesson duration. While the full audio is playing or being seeked, the transcript line whose `[start_ms, end_ms)` interval contains the current playback position must be highlighted. The final line includes its exact `end_ms`; gaps between timestamp ranges must not highlight an unrelated line.
 
-Below the listening tip, display a localized, keyboard-accessible next-lesson card whenever another published English lesson exists in manifest order. The card must show the next lesson title and useful context such as category, section, optional level, and sentence count, and navigate through its canonical lesson path. Do not render an inactive or fabricated card for the final English lesson.
+Below the listening tip, display a localized, keyboard-accessible next-lesson card whenever another published English lesson exists later in the same Section's filename-derived order. The card must show the next lesson title and useful context such as category, section, optional level, and sentence count, and navigate through its canonical lesson path. Do not create a next-lesson relationship across Sections or render an inactive card for the final lesson in a Section.
 
 In Dictation mode, Enter invokes Check while an answer is available, including when the answer textarea has focus. After a Check attempt, hide Check until the user changes the textarea value; Enter must not resubmit the unchanged answer while Check is hidden. Editing the answer clears the previous feedback state and restores Check. Escape invokes Skip only while Skip is visible. These shortcuts must not fire inside the Settings dialog or conflict with its Escape-to-close behavior. The Check and Skip controls must expose localized shortcut tooltips on pointer hover and keyboard focus.
 
@@ -1048,7 +1039,7 @@ Section 2
 
 Sections must be loaded from the database.
 
-The category page should present sections as accessible collapsible panels. All sections are collapsed by default, and each expanded panel shows its published lessons in database order. Search and level filters may automatically expand sections containing matching lessons. Each lesson entry displays its title, sentence count, and optional level. Users can search by lesson title and filter by the levels actually available in the category; filtering must preserve the original section and lesson order and expose a clear empty state. The layout must adapt from three lesson columns on desktop to a single column on small screens while retaining keyboard navigation and visible focus states.
+The category page should present sections as accessible collapsible panels. All sections are collapsed by default, and each expanded panel shows its published lessons by the stored filename-derived order ascending. Search and level filters may automatically expand sections containing matching lessons. Each lesson entry displays its title, sentence count, and optional level. Users can search by lesson title and filter by the levels actually available in the category; filtering must preserve the original section and lesson order, including numbering gaps, and expose a clear empty state. The layout must adapt from three lesson columns on desktop to a single column on small screens while retaining keyboard navigation and visible focus states.
 
 Optionally display:
 
@@ -1322,8 +1313,8 @@ Do not put the entire importer inside an HTTP route handler.
 The implemented Admin UI exposes two independent adapters:
 
 ```text
-AI Import: audio + canonical transcript → alignment → draft review → publish
-Non-AI Import: MP3/SRT files or ZIP → unified batch validation → preview → confirm
+Lesson Package Import: MP3/SRT with optional language TXT files → unified validation → preview → per-lesson transactional processing with partial success and retry
+Translation-Only Import: existing lesson + one or more explicitly selected language/TXT entries → atomic replace
 ```
 
 Non-AI direct files and ZIP inputs must use one batch pipeline for both a single lesson and multiple lessons. The common MP3/SRT basename supplies the title, the normal slug service supplies the slug, and standard SRT supplies canonical text and timestamps. Invalid items must not block valid items; resume/retry must skip completed items. See `LESSON_IMPORT_SPEC.md` for the current operational contract.
@@ -1395,25 +1386,7 @@ interface AudioTranscriptAligner {
 }
 ```
 
-Do not make business logic depend directly on one specific model.
-
-The first implementation may be:
-
-```text
-Cloudflare Workers AI based aligner
-```
-
-if the current infrastructure and available models are appropriate.
-
-The architecture must allow future replacement with:
-
-```text
-another Cloudflare model
-OpenAI
-Whisper
-external alignment service
-local processing
-```
+The production importer does not perform automatic alignment. Standard SRT timestamps are authoritative and are validated before persistence.
 
 without changing the domain model.
 
@@ -2364,21 +2337,9 @@ Draft lesson creation
 
 ---
 
-### Phase 9 — Automatic Alignment
+### Phase 9 — Prepared Resource Validation
 
-Implement the first automatic alignment provider.
-
-Preferred:
-
-```text
-Cloudflare Workers AI
-```
-
-if appropriate for the current environment.
-
-AI is only used during ingestion.
-
-The provided transcript remains the source of truth.
+Validate filename pairing, standard SRT content and timing, audio duration, Section-scoped order, slug conflicts, and optional translation TXT files. No automatic alignment provider is used.
 
 ---
 
@@ -2477,7 +2438,6 @@ Potential additions may include:
 
 ```text
 R2 listening bucket
-Workers AI binding
 Queue binding
 ```
 
@@ -2499,7 +2459,7 @@ After implementation, Codex should provide:
 2. Database migrations.
 3. Seed/update seed if required.
 4. R2 binding/configuration changes if required.
-5. Workers AI/Queue configuration if used.
+5. Queue configuration if used.
 6. Short documentation describing lesson import.
 7. Short summary of the main files changed.
 8. Any manual setup steps still required.
@@ -2666,11 +2626,7 @@ Backend:
 Cloudflare Worker
         │
         ├──────── Neon PostgreSQL
-        │
-        ├──────── Cloudflare R2
-        │
-        └──────── Workers AI / Queue
-                   ingestion only
+        └──────── Cloudflare R2
 ```
 
 Content model:
@@ -2703,15 +2659,15 @@ AI alignment allowed
 
 ## 92A. Extensible Lesson Translation Workflow
 
-Lesson translations are content records and must remain separate from interface i18n. Target languages use canonical BCP 47 codes. The built-in machine-translation targets are Vietnamese (`vi`), Simplified Chinese (`zh-CN`), and Japanese (`ja`), while the schema and APIs must accept future valid language tags without schema changes.
+Lesson translations are content records and must remain separate from interface i18n. The file-import registry supports Vietnamese (`vi`), Chinese (`zh`), Japanese (`ja`), and Korean (`ko`) and can be extended centrally.
 
-Google Cloud Translation Basic v2 uses the mandatory Worker secret `GOOGLE_TRANSLATE_API_KEY`. Never expose this credential to the browser or declare it in `wrangler.jsonc`. Import and publication must remain successful when translation is unavailable. Persist a durable machine status (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, or `NOT_CONFIGURED`) and provide an administrator retry action. Automatic work runs outside the critical import transaction.
+Translations are supplied by community contributors or UTF-8 Admin import files. Translation import never calls a machine-translation provider and does not require a translation API credential.
 
-Translations are immutable reviewable versions rather than fields on a sentence. Google, users, and administrators may submit candidates. Only `APPROVED` versions are public. Approving a replacement marks the previous approved version `SUPERSEDED`. Rejecting records a reason, and all generation, submission, update, approval, rejection, bulk approval, and supersession actions are auditable. Editing source transcript text supersedes affected pending/approved translations and schedules regeneration for machine-enabled languages.
+Translations are immutable reviewable versions rather than fields on a sentence. Users and administrators may submit candidates. Only `APPROVED` versions are public. Approving a replacement marks the previous approved version `SUPERSEDED`. Rejecting records a reason, and submission, update, approval, rejection, bulk approval, and supersession actions are auditable. Editing source transcript text supersedes affected pending/approved translations; it never schedules machine generation.
 
 Authenticated users may add a target language and manually submit a translation. The add-language control must display the centrally maintained catalog of exactly 30 popular languages; users must not enter arbitrary language codes or names. Existing choices remain visible but disabled. The Worker must enforce the same catalog and derive canonical code, English name, and native name server-side so a crafted request cannot bypass the UI. User-created languages and candidates remain private to their creator and administrators until approval. The client provides a target-language selector, remembers the user's preference, shows approved text, shows the user's own pending candidate, and supports proposing a correction without removing the currently approved public version.
 
-Administrators can approve or reject one sentence candidate, approve a complete lesson/language set atomically, and retry machine translation. Whole-lesson approval is rejected unless every sentence has either an approved version or a pending candidate. The latest pending candidate for each sentence is selected during bulk approval; existing approved sentences remain approved when no replacement is pending.
+Administrators can approve or reject one sentence candidate and approve a complete lesson/language set atomically. Whole-lesson approval is rejected unless every sentence has either an approved version or a pending candidate. The latest pending candidate for each sentence is selected during bulk approval; existing approved sentences remain approved when no replacement is pending.
 
 The whole-lesson approval action is enabled only when at least one sentence has a translation, no sentence is currently rejected or missing a pending/approved translation, the lesson is published and active, and the target language has `ACTIVE` status. These constraints must be calculated for the administration UI and enforced again by the Worker endpoint.
 

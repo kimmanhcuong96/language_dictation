@@ -13,10 +13,10 @@ export interface AccountUser {
   preferredTranslationLanguage: string;
 }
 
-export interface TranslationLanguageOption { code:string; name:string; nativeName:string; isBuiltin:boolean; machineTranslationEnabled:boolean; status:"PENDING"|"ACTIVE"|"DISABLED"; isOwner:boolean; approvedCount:number; sentenceCount:number; canContribute:boolean; }
+export interface TranslationLanguageOption { code:string; name:string; nativeName:string; isBuiltin:boolean; status:"PENDING"|"ACTIVE"|"DISABLED"; isOwner:boolean; approvedCount:number; sentenceCount:number; canContribute:boolean; }
 export interface SentenceTranslation { id:string; sentenceId:string; text:string; source?:"GOOGLE"|"USER"|"ADMIN"; status?:string; updatedAt:string; }
 export interface TranslationReviewItem { id:string; sentenceId:string; languageCode:string; text:string; source:string; status:string; createdAt:string; position:number; transcript:string; lessonId:string; lessonTitle:string; languageName:string; submittedBy:string|null; }
-export interface TranslationSetReview { lessonId:string; lessonTitle:string; languageCode:string; languageName:string; machineTranslationEnabled:boolean; status:string; machineStatus:string; lastError:string|null; attemptCount:number; lessonActive:boolean; languageStatus:string; sentenceCount:number; readySentenceCount:number; rejectedSentenceCount:number; canApproveLesson:boolean; approvalBlockReason:"lesson_inactive"|"language_inactive"|"translation_set_empty"|"translation_set_rejected"|"translation_set_incomplete"|null; }
+export interface TranslationSetReview { lessonId:string; lessonTitle:string; languageCode:string; languageName:string; status:string; lessonActive:boolean; languageStatus:string; sentenceCount:number; readySentenceCount:number; rejectedSentenceCount:number; canApproveLesson:boolean; approvalBlockReason:"lesson_inactive"|"language_inactive"|"translation_set_empty"|"translation_set_rejected"|"translation_set_incomplete"|null; }
 
 export interface ActivityEvent {
   eventId: string;
@@ -43,6 +43,7 @@ export interface AdminImportBatchItem {
   slug: string | null;
   audioName: string | null;
   srtName: string | null;
+  translationFiles: Record<string,string>;
   durationMs: number | null;
   segmentCount: number | null;
   status: "INVALID" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
@@ -84,24 +85,22 @@ interface AuthContextValue {
   setListeningLessonFavorite: (lessonId: string, favorite: boolean) => Promise<{ lessonId: string; starCount: number; isStarred: boolean }>;
   saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
   adminCreateSection: (input: { categoryId: string; title: string; description?: string }) => Promise<{ section: { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string } }>;
-  adminImportLesson: (form: FormData) => Promise<{ jobId: string; lessonId: string; status: string; sentences: unknown[] }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
   adminGetImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
   adminConfirmImportBatch: (batchId: string) => Promise<{ batch: AdminImportBatch }>;
   adminProcessImportBatchItem: (batchId: string, itemId: string) => Promise<{ batch: AdminImportBatch }>;
-  adminReviewLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminUpdateLesson: (lessonId: string, input: unknown) => Promise<void>;
   adminDeleteLesson: (lessonId: string) => Promise<void>;
   adminDeleteLessons: (lessonIds: string[]) => Promise<{ deleted: string[]; failed: Array<{ lessonId: string; error: string }> }>;
   getTranslationLanguages: (lessonId:string) => Promise<TranslationLanguageOption[]>;
-  getLessonTranslations: (lessonId:string,languageCode:string) => Promise<{approved:SentenceTranslation[];contributions:SentenceTranslation[];set:{status:string;machineStatus:string;lastError:string|null}|null}>;
+  getLessonTranslations: (lessonId:string,languageCode:string) => Promise<{approved:SentenceTranslation[];contributions:SentenceTranslation[];set:{status:string}|null}>;
   addTranslationLanguage: (code:string) => Promise<TranslationLanguageOption>;
   submitSentenceTranslation: (sentenceId:string,input:{languageCode:string;text:string}) => Promise<SentenceTranslation>;
   saveTranslationPreference: (languageCode:string) => Promise<void>;
   adminGetTranslations: (query?:string) => Promise<{translations:TranslationReviewItem[];translationSets:TranslationSetReview[]}>;
   adminReviewTranslation: (translationId:string,action:"approve"|"reject",reason?:string) => Promise<void>;
   adminApproveLessonTranslations: (lessonId:string,languageCode:string) => Promise<void>;
-  adminGenerateLessonTranslations: (lessonId:string,languageCode?:string) => Promise<void>;
+  adminImportTranslations: (form:FormData) => Promise<{lessonId:string;translations:Array<{languageCode:string;lineCount:number}>}>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -245,10 +244,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       return api("/api/listening/admin/sections", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
     },
-    adminImportLesson: async (form) => {
-      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
-      return api("/api/listening/admin/import", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
-    },
     adminValidateImportBatch: async (form) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       return api("/api/listening/admin/import-batches/validate", { method: "POST", headers: { "X-CSRF-Token": csrf }, body: form });
@@ -264,10 +259,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminProcessImportBatchItem: async (batchId,itemId) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
       return api(`/api/listening/admin/import-batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/process`, { method:"POST", headers:{ "X-CSRF-Token":csrf } });
-    },
-    adminReviewLesson: async (lessonId, input) => {
-      if (!csrf || !user?.isAdmin) throw new Error("forbidden");
-      await api(`/api/listening/admin/lessons/${encodeURIComponent(lessonId)}/review`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
     },
     adminUpdateLesson: async (lessonId, input) => {
       if (!csrf || !user?.isAdmin) throw new Error("forbidden");
@@ -303,8 +294,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminApproveLessonTranslations: async (lessonId,languageCode) => {
       if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/translations/lessons/${encodeURIComponent(lessonId)}/${encodeURIComponent(languageCode)}/approve`,{method:"POST",headers:{"X-CSRF-Token":csrf}});
     },
-    adminGenerateLessonTranslations: async (lessonId,languageCode) => {
-      if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/translations/lessons/${encodeURIComponent(lessonId)}/generate`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(languageCode?{languageCode}:{})});
+    adminImportTranslations: async (form) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");return api("/api/listening/admin/translations/import",{method:"POST",headers:{"X-CSRF-Token":csrf},body:form});
     },
   }), [user, loading, csrf, sendActivity]);
 

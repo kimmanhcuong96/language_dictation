@@ -1,6 +1,6 @@
 # Hướng dẫn quản lý nội dung Me2Listen
 
-Tài liệu này dành cho người quản lý nội dung. Phiên bản hiện tại hỗ trợ tạo bài nghe English từ một file audio gốc và transcript, tự căn timestamp bằng Workers AI, review rồi publish.
+Tài liệu này dành cho người quản lý nội dung. Phiên bản hiện tại nhập bài nghe English đã được chuẩn bị sẵn dưới dạng MP3 + SRT chuẩn; hệ thống không dùng AI để tạo nội dung hoặc timestamp.
 
 ## 1. Thành phần và nơi lưu
 
@@ -38,23 +38,10 @@ Project đã nối bucket trong `wrangler.jsonc`:
 
 `bucket_name` là tên thật trên Cloudflare; `LISTENING_AUDIO` là tên biến Worker dùng trong code. Không cần tạo public URL hoặc đưa R2 access key vào frontend.
 
-### Workers AI và database
+### Database và biến deployment
 
-Ứng dụng gọi Workers AI qua Cloudflare REST API, không dùng binding `AI` trong Worker đang deploy. Khai báo hai biến sau trong secret/environment của Worker:
+`GOOGLE_CLIENT_ID`, `APP_ORIGIN`, `DATABASE_URL` và `ADMIN_EMAILS` chỉ được cấu hình trong **Variables and Secrets** của môi trường deployment, không nằm trong `wrangler.jsonc`. `APP_ORIGIN` phải là origin chính xác, không có dấu `/` cuối. Project bật `keep_vars: true` để giữ các giá trị trên Dashboard khi deploy code mới.
 
-```text
-CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
-CLOUDFLARE_AI_TOKEN=your-workers-ai-api-token
-CLOUDFLARE_AI_MODEL=@cf/openai/whisper
-```
-
-Token cần quyền Workers AI Read/Write theo Cloudflare. Không đưa token vào frontend, `wrangler.jsonc` hoặc Git. Workers AI chỉ dùng để gợi ý timestamp; transcript người quản lý nhập luôn là nội dung chuẩn.
-
-`CLOUDFLARE_AI_MODEL` là bắt buộc; hệ thống không tự chọn model mặc định. Giá trị phải là model Workers AI dạng `@cf/{vendor}/{model}` và model cần trả về VTT để căn timestamp.
-
-Ba biến `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN` và `CLOUDFLARE_AI_MODEL` không được khai báo trong `wrangler.jsonc`. Project đã bật `keep_vars: true`, vì vậy các giá trị bạn đặt trên Cloudflare Dashboard sẽ được giữ nguyên khi deploy code mới.
-
-`GOOGLE_CLIENT_ID` và `APP_ORIGIN` cũng chỉ được cấu hình trong **Variables and Secrets** của môi trường deployment, không nằm trong `wrangler.jsonc`. `APP_ORIGIN` phải là origin chính xác của ứng dụng, không có dấu `/` cuối, ví dụ `https://me2listen.example.com`. Nhờ `keep_vars: true`, deploy code mới không ghi đè hai biến này.
 
 Chạy migration trong database mục tiêu:
 
@@ -72,11 +59,10 @@ Email đăng nhập Google phải khớp danh sách này. Không commit `DATABAS
 
 Project đã bật `keep_vars: true` và không khai báo `ADMIN_EMAILS` trong `wrangler.jsonc`, nên giá trị `ADMIN_EMAILS` trên Cloudflare Dashboard sẽ được giữ lại khi deploy. Nếu lần deploy trước đã ghi đè thành rỗng, hãy nhập lại giá trị một lần trong Dashboard trước khi deploy phiên bản mới.
 
-### Google Cloud Translation
+### Nhập bản dịch
 
-Google machine translation hiện đang tắt bằng cờ `machine_translation_enabled` trong database. Worker không tự tạo candidate và không gọi Google Translation API, kể cả khi `GOOGLE_TRANSLATE_API_KEY` vẫn còn trên môi trường deployment. Không cần cấu hình API key trong giai đoạn này.
+Bản dịch có thể đi kèm gói bài học dưới dạng `{name}.{vi|zh|ja|ko}.txt` hoặc được thêm/thay thế sau bằng tab **Chỉ nhập bản dịch**. Mỗi file phải là UTF-8 và có đúng một dòng không trống cho mỗi cue SRT. Không cần cấu hình API dịch máy.
 
-Bản dịch hiện được lấy từ contribution của người dùng. Contribution có trạng thái chờ duyệt và không xuất hiện công khai cho đến khi admin duyệt.
 
 Sau khi đổi binding/config:
 
@@ -125,9 +111,9 @@ AI chỉ map timestamp cho đúng các dòng transcript đã gửi lên. Phần 
 
 ### 4.2. Nhập không dùng AI bằng MP3 + SRT
 
-1. Chuẩn bị từng cặp file cùng basename, ví dụ `first-snowfall.mp3` và `first-snowfall.srt`.
+1. Chuẩn bị từng cặp file theo đúng `NN_<tên-bài>.mp3` và `NN_<tên-bài>.srt`, ví dụ `01_first-snowfall.mp3` và `01_first-snowfall.srt`. `NN` phải từ `01` đến `99` và là thứ tự cố định của bài trong Section.
 2. Chọn section đích một lần cho cả batch. Level là tùy chọn và có thể để trống.
-3. Chọn nhiều file MP3/SRT trực tiếp, hoặc chọn một ZIP chứa các cặp file.
+3. Chọn nhiều file MP3/SRT trực tiếp, hoặc chọn một ZIP chứa các cặp file. Thứ tự chọn file không ảnh hưởng thứ tự bài học. File/order lỗi được báo riêng; các lesson hợp lệ còn lại vẫn có thể được nhập.
 4. Bấm **Kiểm tra và xem trước**; kiểm tra tên bài, slug, duration, số đoạn và lỗi từng item.
 5. Bấm **Xác nhận nhập** để xử lý các item hợp lệ. Một cặp cũng dùng đúng pipeline batch này.
 

@@ -19,4 +19,9 @@ describe("findNextLesson", () => {
     expect(findNextLesson(manifest, "en-2")).toBeUndefined();
     expect(findNextLesson(manifest, "missing")).toBeUndefined();
   });
+
+  it("does not create a next-lesson order across sections", () => {
+    const crossSection: LessonManifest = { version:"1", lessons:[lesson("first","en"),{...lesson("other","en"),sectionId:"other-section"}] };
+    expect(findNextLesson(crossSection,"first")).toBeUndefined();
+  });
 });

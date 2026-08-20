@@ -1,19 +1,17 @@
 import { neon } from "@neondatabase/serverless";
 import { unzipSync, zipSync } from "fflate";
-import { validateAlignedSentences, type AlignedSentence } from "../src/lib/ingestion";
+import { validateAlignedSentences } from "../src/lib/ingestion";
 import { normalizeOptionalLevel } from "../src/lib/importMetadata";
-import { allocateImportCandidateSlugs, describeImportResource, NON_AI_IMPORT_LIMITS, pairImportResources, parseNonAiSrt } from "../src/lib/nonAiImport";
+import { describeImportResource, NON_AI_IMPORT_LIMITS, pairImportResources, parseNonAiSrt, validateImportCandidateSlugs } from "../src/lib/nonAiImport";
 import { getNormalizer } from "../src/lib/dictation";
 import { resolveObjectRange } from "../src/lib/httpRange";
-import { slugifyTitle, uniqueSlug } from "../src/lib/slug";
-import { alignLessonImport } from "./listening-import";
-import { routeListeningTranslations, scheduleAutomaticTranslations } from "./listening-translations";
+import { slugifyTitle } from "../src/lib/slug";
+import { parseTranslationText } from "../src/lib/translationImport";
+import { routeListeningTranslations } from "./listening-translations";
 
 export interface ListeningSession { id: string; email: string; }
-const MAX_AUDIO_BYTES = NON_AI_IMPORT_LIMITS.maxAudioBytes;
 const MAX_JSON_BYTES = 128 * 1024;
 const MAX_BATCH_REQUEST_BYTES = NON_AI_IMPORT_LIMITS.maxArchiveBytes + 2 * 1024 * 1024;
-const BATCH_ITEM_STALE_SECONDS = 10 * 60;
 class RequestBodyError extends Error { constructor(message: string, readonly status: number) { super(message); } }
 const publicHeaders = { "Cache-Control": "public, max-age=60, stale-while-revalidate=300", "Content-Type": "application/json; charset=utf-8" };
 const json = (body: unknown, status = 200, cache = false) => Response.json(body, { status, headers: cache ? publicHeaders : { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" } });
@@ -26,8 +24,8 @@ const sqlFor = (env: Env) => neon(env.DATABASE_URL) as TransactionSql;
 const validId = (value: string | null, max = 100) => value && new RegExp(`^[\\w-]{1,${max}}$`, "u").test(value) ? value : null;
 const isAdmin = (env: Env, session: ListeningSession | null) => !!session && env.ADMIN_EMAILS.split(",").map((item) => item.trim().toLocaleLowerCase()).filter(Boolean).includes(session.email.toLocaleLowerCase());
 
-export async function routeListening(request: Request, env: Env, url: URL, session: ListeningSession | null, mutationValid: boolean, ctx:ExecutionContext): Promise<Response> {
-  const translationResponse=await routeListeningTranslations(request,env,url,session,isAdmin(env,session),mutationValid,ctx);if(translationResponse)return translationResponse;
+export async function routeListening(request: Request, env: Env, url: URL, session: ListeningSession | null, mutationValid: boolean): Promise<Response> {
+  const translationResponse=await routeListeningTranslations(request,env,url,session,isAdmin(env,session),mutationValid);if(translationResponse)return translationResponse;
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith("/api/listening/audio/")) return serveAudio(request, env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/categories") return getCategories(env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/sections") return getSections(env, url);
@@ -45,13 +43,11 @@ export async function routeListening(request: Request, env: Env, url: URL, sessi
   if (request.method === "POST" && url.pathname === "/api/listening/admin/sections") return isAdmin(env, session) && mutationValid ? createAdminSection(request, env) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) ? getAdminLessons(env, url) : json({ error: "forbidden" }, 403);
   if (request.method === "GET" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getAdminLesson(env, url) : json({ error: "forbidden" }, 403);
-  if (request.method === "POST" && url.pathname === "/api/listening/admin/import") return isAdmin(env, session) && mutationValid ? importLesson(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "POST" && url.pathname === "/api/listening/admin/import-batches/validate") return isAdmin(env, session) && mutationValid ? validateImportBatch(request, env, session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "GET" && /^\/api\/listening\/admin\/import-batches\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) ? getImportBatch(env, session!, url) : json({ error: "forbidden" }, 403);
   if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/confirm$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? confirmImportBatch(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url,ctx) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+\/review$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? reviewLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
-  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url,ctx,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "POST" && /^\/api\/listening\/admin\/import-batches\/[\w-]+\/items\/[\w-]+\/process$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? processImportBatchItem(env, session!, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
+  if (request.method === "PATCH" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? updateLesson(request, env, url,session!) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && url.pathname === "/api/listening/admin/lessons") return isAdmin(env, session) && mutationValid ? deleteLessons(request, env) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   if (request.method === "DELETE" && /^\/api\/listening\/admin\/lessons\/[\w-]+$/u.test(url.pathname)) return isAdmin(env, session) && mutationValid ? deleteLesson(env, url) : json({ error: session ? "forbidden" : "unauthorized" }, session ? 403 : 401);
   return json({ error: "not_found" }, 404);
@@ -80,7 +76,7 @@ async function getManifest(env: Env, url: URL) {
   const versionRows = await sql`SELECT version::text AS version FROM listening_manifest_meta WHERE id=true`;
   const version = String(versionRows[0]?.version ?? "1");
   if (url.searchParams.get("version") === version) return new Response(null, { status: 304, headers: { ETag: `"${version}"`, "Cache-Control": "no-cache" } });
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sentence_count,ROW_NUMBER() OVER(PARTITION BY l.section_id ORDER BY l.sort_order,l.created_at,l.id)::int AS display_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.created_at,l.id`;
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.level,l.sentence_count,l.sort_order::int AS display_order,l.updated_at,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.number AS section_number,s.title AS section_title,lang.code AS language_code FROM listening_canonical_paths p JOIN listening_lessons l ON l.id=p.lesson_id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.id`;
   return json({ version, lessons: rows.map((row) => ({ id: row.id, name: row.title, slug: row.slug, path: row.path, parentId: `${row.language_code}-${row.section_id}`, language: row.language_code, level: row.level, categorySlug: row.category_slug, categoryName: row.category_name, sectionId: row.section_id, sectionNumber: row.section_number, sectionTitle: row.section_title, order: row.display_order, sentenceCount: row.sentence_count, updatedAt: row.updated_at })) }, 200, false);
 }
 
@@ -138,7 +134,7 @@ export async function serveSeoLesson(request: Request, env: Env, url: URL): Prom
   const parts = url.pathname.split("/").filter(Boolean).map((part) => { try { return decodeURIComponent(part); } catch { return ""; } });
   if (parts.length === 3 && parts[0] === "lessons" && parts.slice(1).every(validPathPart)) {
     const [level, category] = parts.slice(1), sql = sqlFor(env);
-    const rows = await sql`SELECT l.title,l.slug,l.level,c.slug AS category_slug FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE lower(coalesce(nullif(l.level,''),'all'))=${level} AND c.slug=${category} AND l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY l.sort_order,l.title`;
+    const rows = await sql`SELECT l.title,l.slug,l.level,c.slug AS category_slug FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE lower(coalesce(nullif(l.level,''),'all'))=${level} AND c.slug=${category} AND l.is_published=true AND s.is_published=true AND c.is_published=true AND lang.is_enabled=true ORDER BY s.sort_order,s.number,l.sort_order,l.id`;
     if (!rows.length) return seoHtml(request, env, { status: 404, title: "Lessons not found", description: "This lesson category is not available." });
     const links = rows.map((row) => `<li><a href="${escapeHtml(lessonPath(String(row.level ?? "all"), String(row.category_slug), String(row.slug)))}">${escapeHtml(String(row.title))}</a></li>`).join("");
     return seoHtml(request, env, { title: `${category} lessons`, description: `Lessons in ${category}.`, canonical: new URL(url.pathname, request.url).toString(), content: `<main class="seo-lesson"><h1>${escapeHtml(category)} lessons</h1><ul>${links}</ul></main>` });
@@ -416,14 +412,14 @@ async function getAdminLessons(env: Env, url: URL) {
   if (exactPath.length > 400) return json({ error: "invalid_path" }, 422);
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
   const sql = sqlFor(env);
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (${query}='' OR l.title ILIKE ${`%${query}%`} OR l.slug ILIKE ${`%${query}%`} OR p.path ILIKE ${`%${query}%`}) AND (${exactPath}='' OR p.path=${exactPath}) AND (${language}='all' OR lang.code=${language}) AND (${status}='all' OR (${status}='published' AND l.is_published=true) OR (${status}='draft' AND l.is_published=false)) ORDER BY p.path,l.title LIMIT ${limit}`;
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.source_filename,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (${query}='' OR l.title ILIKE ${`%${query}%`} OR l.slug ILIKE ${`%${query}%`} OR p.path ILIKE ${`%${query}%`}) AND (${exactPath}='' OR p.path=${exactPath}) AND (${language}='all' OR lang.code=${language}) AND (${status}='all' OR (${status}='published' AND l.is_published=true) OR (${status}='draft' AND l.is_published=false)) ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.id LIMIT ${limit}`;
   return json({ lessons: rows });
 }
 
 async function getAdminLesson(env: Env, url: URL) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length)); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
   const sql = sqlFor(env);
-  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.id=${lessonId}`;
+  const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.source_filename,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.id=${lessonId}`;
   if (!rows.length) return json({ error: "not_found" }, 404);
   const sentences = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
   return json({ lesson: { ...rows[0], sentences } });
@@ -438,6 +434,7 @@ interface PreparedBatchItem {
   slug: string | null;
   audioName: string | null;
   srtName: string | null;
+  translationFiles: Record<string,string>;
   durationMs: number | null;
   segmentCount: number | null;
   sortOrder: number;
@@ -464,18 +461,19 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
   const candidates = pairImportResources(source.descriptors);
   if (candidates.filter((candidate) => candidate.slug).length > NON_AI_IMPORT_LIMITS.maxLessons) return json({ error: "too_many_lessons" }, 413);
   const sql = sqlFor(env);
-  const sectionRows = await sql`SELECT s.id,c.id AS category_id,c.slug AS category_slug FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`;
+  const sectionRows = await sql`SELECT s.id,s.title,c.id AS category_id,c.slug AS category_slug FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`;
   const section = sectionRows[0]; if (!section) return json({ error: "invalid_section" }, 422);
-  const existingLessonRows = await sql`SELECT slug FROM listening_lessons WHERE section_id=${sectionId}`;
+  const existingLessonRows = await sql`SELECT id,slug,title,sort_order,source_filename FROM listening_lessons WHERE section_id=${sectionId}`;
   const existingPathRows = await sql`SELECT p.path FROM listening_canonical_paths p JOIN listening_lessons lesson ON lesson.id=p.lesson_id JOIN listening_sections s ON s.id=lesson.section_id WHERE s.category_id=${section.category_id}`;
-  const orderRows = await sql`SELECT COALESCE(MAX(sort_order),0)::int AS max_sort_order FROM listening_lessons WHERE section_id=${sectionId}`;
   const existingSlugs = new Set(existingLessonRows.map(row=>String(row.slug))),existingPaths = new Set(existingPathRows.map(row=>String(row.path)));
+  const existingOrders = new Map(existingLessonRows.map(row=>[Number(row.sort_order),row]));
   const sourceFiles = new Map(source.files.map((entry) => [entry.name, entry.file]));
   const batchId = crypto.randomUUID();
-  const initialSortOrder = Number(orderRows[0]?.max_sort_order ?? 0);
   const validated = [] as Array<{ candidate: typeof candidates[number]; durationMs: number | null; segmentCount: number | null }>;
   for (const candidate of candidates) {
     const errors = [...candidate.errors];
+    const conflict = existingOrders.get(candidate.lessonOrder);
+    if (conflict) errors.push(`lesson_order_conflict:${candidate.lessonOrder}:${String(section.title)}:${String(conflict.id)}:${String(conflict.title)}:${candidate.audioName ?? candidate.sourceFilename}`);
     const audio = candidate.audioName ? sourceFiles.get(candidate.audioName) : undefined;
     const srt = candidate.srtName ? sourceFiles.get(candidate.srtName) : undefined;
     let durationMs = candidate.audioName ? durations.get(candidate.audioName) ?? null : null;
@@ -487,15 +485,24 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
         const sentences = parseNonAiSrt(srtText, durationMs ?? undefined);
         segmentCount = sentences.length;
         durationMs ??= sentences.at(-1)!.endMs;
+        for (const [languageCode, translationName] of Object.entries(candidate.translations)) {
+          const translation = sourceFiles.get(translationName);
+          if (!translation) { errors.push(`translation_file_missing:${languageCode}`); continue; }
+          try {
+            const text = new TextDecoder("utf-8", { fatal:true, ignoreBOM:false }).decode(await translation.arrayBuffer());
+            const parsed = parseTranslationText(text, sentences.length);
+            if (parsed.error) errors.push(`${parsed.error}:${languageCode}:${parsed.line ?? parsed.actual ?? ""}:${parsed.expected ?? ""}`);
+          } catch { errors.push(`translation_invalid_utf8:${languageCode}`); }
+        }
       } catch (error) { errors.push(error instanceof Error ? error.message : "invalid_srt"); }
     }
     validated.push({ candidate:{ ...candidate, errors:[...new Set(errors)] }, durationMs, segmentCount });
   }
-  const allocatedCandidates = allocateImportCandidateSlugs(validated.map((item) => item.candidate), (slug) => existingSlugs.has(slug) || existingPaths.has(lessonPath(level || "all", String(section.category_slug), slug)));
-  const prepared: PreparedBatchItem[] = allocatedCandidates.map((candidate,index) => ({
-    id:crypto.randomUUID(), normalizedBasename:`${candidate.key}:${index}`, lessonName:candidate.lessonName, slug:candidate.slug || null,
-    audioName:candidate.audioName ?? null, srtName:candidate.srtName ?? null, durationMs:validated[index].durationMs,
-    segmentCount:validated[index].segmentCount, sortOrder:initialSortOrder + index + 1,
+  const slugValidatedCandidates = validateImportCandidateSlugs(validated.map((item) => item.candidate), (slug) => existingSlugs.has(slug) || existingPaths.has(lessonPath(level || "all", String(section.category_slug), slug)));
+  const prepared: PreparedBatchItem[] = slugValidatedCandidates.map((candidate,index) => ({
+    id:crypto.randomUUID(), normalizedBasename:candidate.key, lessonName:candidate.lessonName, slug:candidate.slug || null,
+    audioName:candidate.audioName ?? null, srtName:candidate.srtName ?? null, translationFiles:candidate.translations, durationMs:validated[index].durationMs,
+    segmentCount:validated[index].segmentCount, sortOrder:candidate.lessonOrder,
     status:candidate.errors.length ? "INVALID" : "QUEUED", errors:candidate.errors,
   }));
   const sourceArchiveKey=prepared.some(item=>item.status==="QUEUED")?`listening/import-staging/${batchId}/resources.zip`:null;
@@ -503,7 +510,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
     if(sourceArchiveKey){const archive=source.originalArchive??await createResourceArchive(source.files);await env.LISTENING_AUDIO.put(sourceArchiveKey,archive,{httpMetadata:{contentType:"application/zip",cacheControl:"no-store"}});}
     const queries: TransactionQuery[] = [
       sql`INSERT INTO listening_import_batches(id,created_by,section_id,input_method,source_archive_key,level,status) VALUES(${batchId},${session.id},${sectionId},${inputMethod},${sourceArchiveKey},${level||null},'VALIDATED')`,
-      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,original_audio_name,original_srt_name,audio_duration_ms,segment_count,sort_order,status,validation_errors) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.audioName},${item.srtName},${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb)`),
+      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,original_audio_name,original_srt_name,translation_files,audio_duration_ms,segment_count,sort_order,status,validation_errors) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.audioName},${item.srtName},${JSON.stringify(item.translationFiles)}::jsonb,${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb)`),
     ];
     await sql.transaction(queries);
   } catch (error) {
@@ -561,166 +568,89 @@ async function getImportBatchById(env: Env, session: ListeningSession, batchId: 
   const sql = sqlFor(env);
   const batches = await sql`SELECT b.id,b.input_method,b.level,b.status,b.confirmed_at,b.created_at,l.code AS language_code,l.name AS language_name,c.name AS category_name,s.title AS section_title,s.id AS section_id FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId} AND b.created_by=${session.id}`;
   if (!batches.length) return json({ error:"not_found" },404);
-  const items = await sql`SELECT id,lesson_name AS "lessonName",slug,original_audio_name AS "audioName",original_srt_name AS "srtName",audio_duration_ms AS "durationMs",segment_count AS "segmentCount",status,validation_errors AS errors,error_message AS "errorMessage",lesson_id AS "lessonId",attempt_count AS "attemptCount",sort_order AS "sortOrder" FROM listening_import_batch_items WHERE batch_id=${batchId} ORDER BY sort_order,id`;
+  const items = await sql`SELECT id,lesson_name AS "lessonName",slug,original_audio_name AS "audioName",original_srt_name AS "srtName",translation_files AS "translationFiles",audio_duration_ms AS "durationMs",segment_count AS "segmentCount",status,validation_errors AS errors,error_message AS "errorMessage",lesson_id AS "lessonId",attempt_count AS "attemptCount",sort_order AS "sortOrder" FROM listening_import_batch_items WHERE batch_id=${batchId} ORDER BY sort_order,id`;
   const counts = { total:items.length, valid:items.filter((item) => item.status !== "INVALID").length, invalid:items.filter((item) => item.status === "INVALID").length, queued:items.filter((item) => item.status === "QUEUED").length, processing:items.filter((item) => item.status === "PROCESSING").length, completed:items.filter((item) => item.status === "COMPLETED").length, failed:items.filter((item) => item.status === "FAILED").length };
   return json({ batch:{ ...batches[0], items, counts } });
 }
 
 async function confirmImportBatch(env: Env, session: ListeningSession, url: URL) {
   const batchId = validId(url.pathname.slice("/api/listening/admin/import-batches/".length).replace(/\/confirm$/u,"")); if (!batchId) return json({error:"invalid_batch"},422);
-  const sql = sqlFor(env);
-  const rows = await sql`UPDATE listening_import_batches b SET confirmed_at=COALESCE(confirmed_at,now()),status='PROCESSING',updated_at=now() WHERE b.id=${batchId} AND b.created_by=${session.id} AND b.status IN ('VALIDATED','PROCESSING','PARTIAL','FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','FAILED','PROCESSING')) RETURNING b.id`;
-  if (!rows.length) return json({error:"batch_not_confirmable"},409);
-  return getImportBatchById(env,session,batchId);
+  const sql=sqlFor(env);
+  const rows=await sql`UPDATE listening_import_batches b SET confirmed_at=COALESCE(confirmed_at,now()),status='PROCESSING',updated_at=now() WHERE b.id=${batchId} AND b.created_by=${session.id} AND b.status IN ('VALIDATED','PROCESSING','PARTIAL','FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','FAILED','PROCESSING')) RETURNING b.id`;
+  return rows.length?getImportBatchById(env,session,batchId):json({error:"batch_not_confirmable"},409);
 }
 
-async function processImportBatchItem(env: Env, session: ListeningSession, url: URL,ctx:ExecutionContext) {
-  const match = url.pathname.match(/^\/api\/listening\/admin\/import-batches\/([\w-]+)\/items\/([\w-]+)\/process$/u); if (!match) return json({error:"invalid_batch_item"},422);
+async function processImportBatchItem(env: Env, session: ListeningSession, url: URL) {
+  const match=url.pathname.match(/^\/api\/listening\/admin\/import-batches\/([\w-]+)\/items\/([\w-]+)\/process$/u);
+  if(!match)return json({error:"invalid_batch_item"},422);
   const [,batchId,itemId]=match,sql=sqlFor(env);
-  const completed = await sql`SELECT i.lesson_id FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.created_by=${session.id} AND i.status='COMPLETED'`;
-  if (completed.length) return getImportBatchById(env,session,batchId);
-  const claimed = await sql`UPDATE listening_import_batch_items i SET status='PROCESSING',attempt_count=attempt_count+1,error_message=NULL,updated_at=now() FROM listening_import_batches b WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.id=i.batch_id AND b.created_by=${session.id} AND b.confirmed_at IS NOT NULL AND (i.status IN ('QUEUED','FAILED') OR (i.status='PROCESSING' AND i.updated_at < now()-(${BATCH_ITEM_STALE_SECONDS} * interval '1 second'))) RETURNING i.*`;
-  const item=claimed[0]; if(!item)return json({error:"batch_item_not_processable"},409);
+  const completed=await sql`SELECT i.lesson_id FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.created_by=${session.id} AND i.status='COMPLETED'`;
+  if(completed.length)return getImportBatchById(env,session,batchId);
+  const claimed=await sql`UPDATE listening_import_batch_items i SET status='PROCESSING',attempt_count=attempt_count+1,error_message=NULL,updated_at=now() FROM listening_import_batches b WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.id=i.batch_id AND b.created_by=${session.id} AND b.confirmed_at IS NOT NULL AND (i.status IN ('QUEUED','FAILED') OR (i.status='PROCESSING' AND i.updated_at<now()-interval '10 minutes')) RETURNING i.*`;
+  const item=claimed[0];
+  if(!item)return json({error:"batch_item_not_processable"},409);
   const batchRows=await sql`SELECT b.level,b.section_id,b.source_archive_key,c.slug AS category_slug,l.code AS language_code FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId}`;
-  const batch=batchRows[0]; if(!batch)return json({error:"not_found"},404);
-  try {
-    const archiveObject=await env.LISTENING_AUDIO.get(String(batch.source_archive_key));if(!archiveObject)throw new Error("staged_resource_missing");
-    const selected=extractSelectedResources(new Uint8Array(await archiveObject.arrayBuffer()),String(item.original_audio_name),String(item.original_srt_name));
-    const srtText=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(selected.srt);
-    const sentences=parseNonAiSrt(srtText,Number(item.audio_duration_ms));
-    const requestedSlug=slugifyTitle(String(item.lesson_name));if(!requestedSlug)throw new Error("invalid_filename");
-    const result=await persistImportedLesson(env,sql,session,{audio:new Blob([selected.audio],{type:"audio/mpeg"}),audioFileName:String(item.original_audio_name),transcript:sentences.map(sentence=>sentence.text).join("\n"),sectionId:String(batch.section_id),title:String(item.lesson_name),slug:requestedSlug,level:String(batch.level??""),durationMs:Number(item.audio_duration_ms),sentences,languageCode:String(batch.language_code),categorySlug:String(batch.category_slug),sortOrder:Number(item.sort_order),publish:true,batchItemId:itemId,source:"srt"});
-    await scheduleTranslationsAfterContentChange(env,ctx,result.lessonId,session.id);
+  const batch=batchRows[0],audioKey=`listening/${String(batch?.language_code)}/lessons/${itemId}/audio.mp3`;
+  try{
+    if(!batch)throw new Error("invalid_section");
+    const archiveObject=await env.LISTENING_AUDIO.get(String(batch.source_archive_key));
+    if(!archiveObject)throw new Error("staged_resource_missing");
+    const archive=unzipSync(new Uint8Array(await archiveObject.arrayBuffer()));
+    const audioName=String(item.original_audio_name),srtName=String(item.original_srt_name),audio=archive[audioName],srt=archive[srtName];
+    if(!audio||!srt)throw new Error("staged_resource_missing");
+    const sentences=parseNonAiSrt(new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(srt),Number(item.audio_duration_ms));
+    const translations:Record<string,string[]>={},translationFiles=item.translation_files&&typeof item.translation_files==="object"?item.translation_files as Record<string,string>:{};
+    for(const [languageCode,fileName] of Object.entries(translationFiles)){
+      const bytes=archive[fileName];
+      if(!bytes)throw new Error(`translation_file_missing:${languageCode}`);
+      let text:string;
+      try{text=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(bytes);}catch{throw new Error(`translation_invalid_utf8:${languageCode}`);}
+      const parsed=parseTranslationText(text,sentences.length);
+      if(parsed.error)throw new Error(`${parsed.error}:${languageCode}`);
+      translations[languageCode]=parsed.lines;
+    }
+    const lessonId=itemId,jobId=crypto.randomUUID(),slug=String(item.slug),level=String(batch.level??""),canonicalPath=lessonPath(level||"all",String(batch.category_slug),slug),sourceFilename=audioName.replace(/\\/gu,"/").split("/").at(-1)??audioName,sentenceRecords=sentences.map(sentence=>({id:crypto.randomUUID(),...sentence}));
+    await env.LISTENING_AUDIO.put(audioKey,new Blob([audio],{type:"audio/mpeg"}),{httpMetadata:{contentType:"audio/mpeg",cacheControl:"public, max-age=86400"}});
+    const queries:TransactionQuery[]=[
+      sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'VALIDATING',${audioKey},${sentences.map(sentence=>sentence.text).join("\n")})`,
+      sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,source_filename,is_published,import_job_id) VALUES(${lessonId},${String(batch.section_id)},${slug},${String(item.lesson_name)},${level||null},${audioKey},${Number(item.audio_duration_ms)},${sentences.length},${JSON.stringify({alignmentProvider:"standard-srt",importMode:"srt",sourceFilename})}::jsonb,${Number(item.sort_order)},${sourceFilename},true,${jobId})`,
+      sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
+      ...sentenceRecords.map(sentence=>sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${sentence.id},${lessonId},${sentence.position},${sentence.text},${getNormalizer(String(batch.language_code) as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
+    ];
+    for(const [translationLanguage,lines] of Object.entries(translations)){
+      queries.push(sql`INSERT INTO listening_lesson_translation_sets(lesson_id,language_code,status,requested_by) VALUES(${lessonId},${translationLanguage},'APPROVED',${session.id})`);
+      const translationIds=sentenceRecords.map(()=>crypto.randomUUID()),sentenceIds=sentenceRecords.map(sentence=>sentence.id),auditIds=sentenceRecords.map(()=>crypto.randomUUID());
+      queries.push(sql`INSERT INTO listening_sentence_translation_versions(id,sentence_id,language_code,translated_text,source,status,submitted_by,approved_by,approved_at) SELECT row.id,row.sentence_id,${translationLanguage},row.text,'ADMIN','APPROVED',${session.id},${session.id},now() FROM UNNEST(${translationIds}::text[],${sentenceIds}::text[],${lines}::text[]) AS row(id,sentence_id,text)`);
+      queries.push(sql`INSERT INTO listening_translation_audit_log(id,translation_id,lesson_id,sentence_id,language_code,action,actor_id,details) SELECT row.audit_id,row.translation_id,${lessonId},row.sentence_id,${translationLanguage},'SUBMITTED',${session.id},${JSON.stringify({source:"package_import"})}::jsonb FROM UNNEST(${auditIds}::text[],${translationIds}::text[],${sentenceIds}::text[]) AS row(audit_id,translation_id,sentence_id)`);
+    }
+    queries.push(sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='PUBLISHED',updated_at=now() WHERE id=${jobId}`);
+    queries.push(sql`UPDATE listening_import_batch_items SET status='COMPLETED',lesson_id=${lessonId},error_message=NULL,updated_at=now() WHERE id=${itemId}`);
+    queries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
+    await sql.transaction(queries);
     await refreshBatchStatus(sql,batchId);
     await cleanupFinishedBatchArchive(env,sql,batchId);
-    return json({ok:true,lessonId:result.lessonId,batch:(await batchPayload(env,session,batchId))});
-  } catch(error) {
-    const message=postgresErrorCode(error)==="23505"?"duplicate_lesson_slug":error instanceof Error?error.message:"unexpected_server_error";
+    return json({ok:true,lessonId,batch:await batchPayload(env,session,batchId)});
+  }catch(error){
+    await env.LISTENING_AUDIO.delete(audioKey).catch(()=>undefined);
+    const message=postgresErrorCode(error)==="23505"?"lesson_order_or_slug_conflict":error instanceof Error?error.message:"unexpected_server_error";
     await sql`UPDATE listening_import_batch_items SET status='FAILED',error_message=${message.slice(0,500)},updated_at=now() WHERE id=${itemId} AND status='PROCESSING'`;
     await refreshBatchStatus(sql,batchId);
-    console.error(JSON.stringify({event:"batch_import_item_failed",batchId,itemId,message:message.slice(0,500)}));
+    console.error(JSON.stringify({event:"batch_import_item_failed",batchId,itemId,message}));
     return json({error:"batch_item_failed",details:message},422);
   }
 }
 
-async function refreshBatchStatus(sql:TransactionSql,batchId:string){await sql`UPDATE listening_import_batches b SET status=CASE WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','PROCESSING')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='COMPLETED') THEN 'PARTIAL' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') THEN 'FAILED' ELSE 'COMPLETED' END,updated_at=now() WHERE b.id=${batchId}`;}
-function extractSelectedResources(archive:Uint8Array,audioName:string,srtName:string){const selected=unzipSync(archive,{filter:entry=>entry.name===audioName||entry.name===srtName});const audio=selected[audioName],srt=selected[srtName];if(!audio||!srt)throw new Error("staged_resource_missing");return {audio,srt};}
+async function refreshBatchStatus(sql:TransactionSql,batchId:string){
+  await sql`UPDATE listening_import_batches b SET status=CASE WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','PROCESSING')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') AND EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='COMPLETED') THEN 'PARTIAL' WHEN EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status='FAILED') THEN 'FAILED' ELSE 'COMPLETED' END,updated_at=now() WHERE b.id=${batchId}`;
+}
+
+async function batchPayload(env:Env,session:ListeningSession,batchId:string){
+  const response=await getImportBatchById(env,session,batchId);
+  return (await response.json() as {batch:unknown}).batch;
+}
 async function cleanupFinishedBatchArchive(env:Env,sql:TransactionSql,batchId:string){const rows=await sql`SELECT source_archive_key FROM listening_import_batches b WHERE b.id=${batchId} AND b.source_archive_key IS NOT NULL AND NOT EXISTS(SELECT 1 FROM listening_import_batch_items i WHERE i.batch_id=b.id AND i.status IN ('QUEUED','PROCESSING','FAILED'))`;const key=rows[0]?.source_archive_key;if(!key)return;try{await env.LISTENING_AUDIO.delete(String(key));await sql`UPDATE listening_import_batches SET source_archive_key=NULL,updated_at=now() WHERE id=${batchId}`;}catch(error){console.error(JSON.stringify({event:"batch_archive_cleanup_failed",batchId,message:error instanceof Error?error.message:"unknown"}));}}
-async function batchPayload(env:Env,session:ListeningSession,batchId:string){const response=await getImportBatchById(env,session,batchId);return (await response.json() as {batch:unknown}).batch;}
 
-async function importLesson(request: Request, env: Env, session: ListeningSession) {
-  const length = Number(request.headers.get("content-length") ?? 0); if (!Number.isFinite(length) || length <= 0) return json({ error: "content_length_required" }, 411); if (length > MAX_AUDIO_BYTES + 256 * 1024) return json({ error: "upload_too_large" }, 413);
-  let form: FormData;
-  try { form = await request.formData(); }
-  catch { return json({ error: "invalid_multipart_form" }, 400); }
-  const audio = form.get("audio"), transcript = form.get("transcript"), sectionId = form.get("sectionId"), title = form.get("title"), levelValue = form.get("level"), durationRaw = form.get("durationMs"), importMode = form.get("importMode");
-  const level = normalizeOptionalLevel(levelValue);
-  const durationMs = typeof durationRaw === "string" ? Number(durationRaw) : NaN;
-  if (!(audio instanceof File) || audio.size <= 0 || audio.size > MAX_AUDIO_BYTES || !["audio/mpeg","audio/mp3","audio/wav","audio/x-wav","audio/mp4","audio/ogg","audio/webm"].includes(audio.type)) return json({ error: "invalid_audio" }, 422);
-  if (typeof transcript !== "string" || !transcript.trim() || transcript.length > 50_000 || typeof sectionId !== "string" || !validId(sectionId) || typeof title !== "string" || !title.trim() || title.length > 200 || level.length > 30 || !Number.isInteger(durationMs) || durationMs <= 0 || durationMs > 3_600_000) return json({ error: "invalid_import_metadata" }, 422);
-  const slug = slugifyTitle(title.trim()); if (!slug) return json({ error: "title_cannot_create_slug" }, 422);
-  const sql = sqlFor(env), sectionRows = await sql`SELECT s.id,c.slug AS category_slug,l.code AS language_code,COALESCE((SELECT MAX(existing.sort_order) FROM listening_lessons existing WHERE existing.section_id=s.id),0)::int AS max_sort_order FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE s.id=${sectionId} AND l.is_enabled=true`; if (!sectionRows.length) return json({ error: "invalid_section" }, 422);
-  const languageCode = String(sectionRows[0].language_code), lessonId = crypto.randomUUID(), jobId = crypto.randomUUID(), extension = audio.name.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu, "") || "mp3", audioKey = `listening/${languageCode}/lessons/${lessonId}/audio.${extension}`;
-  let sentences: AlignedSentence[];
-  if (importMode !== "ai") return json({ error: "invalid_import_mode" }, 422);
-  try { sentences = await alignLessonImport(env, audio, transcript, durationMs); }
-  catch (error) {
-    console.error(JSON.stringify({ event: "listening_import_alignment_failed", jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
-    return alignmentErrorResponse(error);
-  }
-  try {
-    const result=await persistImportedLesson(env,sql,session,{audio,audioFileName:audio.name,transcript:transcript.trim(),sectionId,title:title.trim(),slug,level,durationMs,sentences,languageCode,categorySlug:String(sectionRows[0].category_slug),sortOrder:Number(sectionRows[0].max_sort_order)+1,publish:false,source:"ai",lessonId,jobId,audioKey});
-    const reviewRows = await sql`SELECT id,position,transcript AS text,start_ms AS "startMs",end_ms AS "endMs" FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`;
-    return json({ jobId:result.jobId, lessonId:result.lessonId, slug:result.slug, path:result.canonicalPath, status: "READY_FOR_REVIEW", sentences: reviewRows });
-  } catch (error) {
-    console.error(JSON.stringify({ event: "listening_import_persistence_failed", lessonId, jobId, message: error instanceof Error ? error.message.slice(0, 500) : "unknown" }));
-    if (error instanceof ImportPersistenceError && !error.cleanupComplete) return json({ error: "import_cleanup_failed", requestId: jobId }, 500);
-    return postgresErrorCode(error) === "23505" ? json({ error: "lesson_canonical_path_exists" }, 409) : json({ error: "import_failed" }, 500);
-  }
-}
-
-interface PersistImportedLessonInput {
-  audio: Blob;
-  audioFileName: string;
-  transcript: string;
-  sectionId: string;
-  title: string;
-  slug: string;
-  level: string;
-  durationMs: number;
-  sentences: AlignedSentence[];
-  languageCode: string;
-  categorySlug: string;
-  sortOrder: number;
-  publish: boolean;
-  source: "ai" | "srt";
-  batchItemId?: string;
-  lessonId?: string;
-  jobId?: string;
-  audioKey?: string;
-}
-
-class ImportPersistenceError extends Error { constructor(message:string,readonly cleanupComplete:boolean,readonly causeValue:unknown){super(message);} }
-
-async function persistImportedLesson(env:Env,sql:TransactionSql,session:ListeningSession,input:PersistImportedLessonInput){
-  const lessonId=input.lessonId??crypto.randomUUID(),jobId=input.jobId??crypto.randomUUID();
-  const extension=input.audioFileName.toLocaleLowerCase().split(".").at(-1)?.replace(/[^a-z0-9]/gu,"")||"mp3";
-  const audioKey=input.audioKey??`listening/${input.languageCode}/lessons/${lessonId}/audio.${extension}`;
-  try{
-    await env.LISTENING_AUDIO.put(audioKey,input.audio,{httpMetadata:{contentType:input.audio.type||"audio/mpeg",cacheControl:"public, max-age=86400"}});
-    const rejectedSlugs=new Set<string>();
-    for(let attempt=0;attempt<100;attempt+=1){
-      const slug=await findAvailableLessonSlug(sql,input.sectionId,input.categorySlug,input.level,input.slug,rejectedSlugs),canonicalPath=lessonPath(input.level||"all",input.categorySlug,slug),finalJobStatus=input.publish?"PUBLISHED":"READY_FOR_REVIEW";
-      const importQueries:TransactionQuery[]=[
-        sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript) VALUES(${jobId},${session.id},'VALIDATING',${audioKey},${input.transcript})`,
-        sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,is_published,import_job_id) VALUES(${lessonId},${input.sectionId},${slug},${input.title},${input.level||null},${audioKey},${input.durationMs},${input.sentences.length},${JSON.stringify({alignmentProvider:input.source==="ai"?"workers-ai-whisper":"standard-srt",importMode:input.source})}::jsonb,${input.sortOrder},${input.publish},${jobId})`,
-        sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
-        ...input.sentences.map(sentence=>sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${crypto.randomUUID()},${lessonId},${sentence.position},${sentence.text},${getNormalizer(input.languageCode as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
-        sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status=${finalJobStatus},updated_at=now() WHERE id=${jobId}`,
-      ];
-      if(input.batchItemId)importQueries.push(sql`UPDATE listening_import_batch_items SET status='COMPLETED',slug=${slug},lesson_id=${lessonId},error_message=NULL,updated_at=now() WHERE id=${input.batchItemId} AND status='PROCESSING'`);
-      importQueries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
-      try{await sql.transaction(importQueries);return {lessonId,jobId,audioKey,canonicalPath,slug};}
-      catch(error){if(postgresErrorCode(error)!=="23505")throw error;rejectedSlugs.add(slug);}
-    }
-    throw new Error("slug_space_exhausted");
-  }catch(error){
-    const cleanupComplete=await cleanupFailedImport(env,sql,{lessonId,jobId,audioKey});
-    throw new ImportPersistenceError(error instanceof Error?error.message:"import_failed",cleanupComplete,error);
-  }
-}
-
-async function findAvailableLessonSlug(sql:TransactionSql,sectionId:string,categorySlug:string,level:string,baseSlug:string,rejected:Set<string>){
-  const lessonRows=await sql`SELECT slug FROM listening_lessons WHERE section_id=${sectionId}`;
-  const pathRows=await sql`SELECT p.path FROM listening_canonical_paths p JOIN listening_lessons lesson ON lesson.id=p.lesson_id JOIN listening_sections section ON section.id=lesson.section_id JOIN listening_categories category ON category.id=section.category_id WHERE category.slug=${categorySlug}`;
-  const usedSlugs=new Set(lessonRows.map(row=>String(row.slug))),usedPaths=new Set(pathRows.map(row=>String(row.path)));
-  return uniqueSlug(baseSlug,candidate=>rejected.has(candidate)||usedSlugs.has(candidate)||usedPaths.has(lessonPath(level||"all",categorySlug,candidate)));
-}
-
-async function reviewLesson(request: Request, env: Env, url: URL,ctx:ExecutionContext,session:ListeningSession) {
-  const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length).replace(/\/review$/u, "")); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
-  let body: Record<string, unknown>;
-  try { body = await boundedJson<Record<string, unknown>>(request); }
-  catch (error) { return error instanceof RequestBodyError ? json({ error: error.message }, error.status) : json({ error: "invalid_json" }, 400); }
-  if (!Array.isArray(body.sentences) || body.sentences.length < 1 || body.sentences.length > 1000 || typeof body.publish !== "boolean") return json({ error: "invalid_review" }, 422);
-  const sentences: Array<AlignedSentence & { id: string }> = [];
-  for (const raw of body.sentences) { if (!raw || typeof raw !== "object") return json({ error: "invalid_review" }, 422); const item = raw as Record<string,unknown>; if (typeof item.id !== "string" || !validId(item.id) || typeof item.text !== "string" || !item.text.trim() || !Number.isInteger(item.position) || !Number.isInteger(item.startMs) || !Number.isInteger(item.endMs)) return json({ error: "invalid_review" }, 422); sentences.push({ id:item.id, text:item.text.trim(), position:Number(item.position), startMs:Number(item.startMs), endMs:Number(item.endMs) }); }
-  const sql = sqlFor(env), lessonRows = await sql`SELECT duration_ms,audio_key,import_job_id FROM listening_lessons WHERE id=${lessonId} AND is_published=false`; if (!lessonRows.length) return json({ error: "not_found" }, 404);
-  const languageRows = await sql`SELECT lang.code AS language_code FROM listening_lessons l JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE l.id=${lessonId}`;
-  const languageCode = String(languageRows[0]?.language_code ?? "en") as "en"|"zh"|"ja";
-  const existingRows=await sql`SELECT id FROM listening_sentences WHERE lesson_id=${lessonId}`;const existingIds=new Set(existingRows.map(row=>String(row.id)));if(existingIds.size!==sentences.length||sentences.some(sentence=>!existingIds.has(sentence.id)))return json({error:"sentence_set_mismatch"},422);
-  const errors = validateAlignedSentences(sentences, Number(lessonRows[0].duration_ms)); if (errors.length) return json({ error: "validation_failed", details: errors }, 422);
-  if (body.publish && !(await env.LISTENING_AUDIO.head(String(lessonRows[0].audio_key)))) return json({ error: "audio_missing" }, 422);
-  const reviewQueries: TransactionQuery[] = sentences.map(sentence => sql`UPDATE listening_sentences SET position=${sentence.position},transcript=${sentence.text},normalized_transcript=${getNormalizer(languageCode).normalize(sentence.text)},start_ms=${sentence.startMs},end_ms=${sentence.endMs},updated_at=now() WHERE id=${sentence.id} AND lesson_id=${lessonId}`);
-  reviewQueries.push(sql`UPDATE listening_lessons SET sentence_count=${sentences.length},is_published=${body.publish},updated_at=now() WHERE id=${lessonId}`);
-  if (body.publish) reviewQueries.push(sql`UPDATE listening_import_jobs SET status='PUBLISHED',updated_at=now() WHERE id=${lessonRows[0].import_job_id}`);
-  reviewQueries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
-  await sql.transaction(reviewQueries);
-  if(body.publish)await scheduleTranslationsAfterContentChange(env,ctx,lessonId,session.id);
-  return json({ ok: true, published: body.publish });
-}
-
-async function updateLesson(request: Request, env: Env, url: URL,ctx:ExecutionContext,session:ListeningSession) {
+async function updateLesson(request: Request, env: Env, url: URL,session:ListeningSession) {
   const lessonId = validId(url.pathname.slice("/api/listening/admin/lessons/".length)); if (!lessonId) return json({ error: "invalid_lesson" }, 422);
   let body: Record<string, unknown>;
   try { body = await boundedJson<Record<string, unknown>>(request); }
@@ -731,7 +661,6 @@ async function updateLesson(request: Request, env: Env, url: URL,ctx:ExecutionCo
   const title = typeof body.title === "string" ? body.title.trim() : String(current.title), slug = typeof body.slug === "string" ? slugifyTitle(body.slug) : String(current.slug);
   if (!title || title.length > 200 || !slug) return json({ error: "invalid_lesson_metadata" }, 422);
   const level = typeof body.level === "string" ? body.level.trim().slice(0, 30) : String(current.level ?? ""), description = body.description === null || typeof body.description === "string" ? body.description : current.description;
-  const sortOrder = Number.isInteger(body.sortOrder) && Number(body.sortOrder) >= 0 && Number(body.sortOrder) <= 100000 ? Number(body.sortOrder) : null;
   const sectionId = typeof body.sectionId === "string" && validId(body.sectionId) ? body.sectionId : null;
   const targetSection = sectionId ?? String(current.section_id);
   const sectionRows = await sql`SELECT s.id,c.slug AS category_slug,lang.code AS language_code FROM listening_sections s JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE s.id=${targetSection} AND lang.is_enabled=true`;
@@ -750,14 +679,13 @@ async function updateLesson(request: Request, env: Env, url: URL,ctx:ExecutionCo
   const duplicateRows = await sql`SELECT 1 FROM listening_canonical_paths WHERE path=${newPath} AND lesson_id<>${lessonId} LIMIT 1`; if (duplicateRows.length) return json({ error: "lesson_canonical_path_exists" }, 409);
   const queries: TransactionQuery[] = [];
   if (current.is_published && oldPath !== newPath) queries.push(sql`INSERT INTO listening_lesson_redirects(old_path,lesson_id) VALUES(${oldPath},${lessonId}) ON CONFLICT(old_path) DO UPDATE SET lesson_id=EXCLUDED.lesson_id`);
-  queries.push(sql`UPDATE listening_lessons SET section_id=${targetSection},slug=${slug},title=${title},description=${description},level=${level},sort_order=${sortOrder ?? Number(current.sort_order)},updated_at=now() WHERE id=${lessonId}`);
+  queries.push(sql`UPDATE listening_lessons SET section_id=${targetSection},slug=${slug},title=${title},description=${description},level=${level},updated_at=now() WHERE id=${lessonId}`);
   queries.push(sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${newPath},${lessonId}) ON CONFLICT(lesson_id) DO UPDATE SET path=EXCLUDED.path,updated_at=now()`);
   const normalizerLanguage = String(sectionRows[0].language_code ?? "en") as "en"|"zh"|"ja";
   if (sentences) for (const sentence of sentences) queries.push(sql`UPDATE listening_sentences SET position=${sentence.position},transcript=${sentence.text},normalized_transcript=${getNormalizer(normalizerLanguage).normalize(sentence.text)},start_ms=${sentence.startMs},end_ms=${sentence.endMs},updated_at=now() WHERE id=${sentence.id} AND lesson_id=${lessonId}`);
-  if(changedSentenceIds.length){const staleRows=await sql`SELECT tr.id,tr.sentence_id,tr.language_code FROM listening_sentence_translation_versions tr WHERE tr.sentence_id=ANY(${changedSentenceIds}) AND tr.status IN ('APPROVED','PENDING')`;for(const row of staleRows){queries.push(sql`UPDATE listening_sentence_translation_versions SET status='SUPERSEDED',updated_at=now() WHERE id=${String(row.id)}`);queries.push(sql`INSERT INTO listening_translation_audit_log(id,translation_id,lesson_id,sentence_id,language_code,action,actor_id,details) VALUES(${crypto.randomUUID()},${String(row.id)},${lessonId},${String(row.sentence_id)},${String(row.language_code)},'SUPERSEDED',${session.id},${JSON.stringify({reason:"source_changed"})}::jsonb)`);}queries.push(sql`UPDATE listening_lesson_translation_sets SET status='DRAFT',machine_status=CASE WHEN language_code IN(SELECT code FROM listening_translation_languages WHERE machine_translation_enabled=true) THEN 'PENDING' ELSE machine_status END,updated_at=now() WHERE lesson_id=${lessonId}`);}
+  if(changedSentenceIds.length){const staleRows=await sql`SELECT tr.id,tr.sentence_id,tr.language_code FROM listening_sentence_translation_versions tr WHERE tr.sentence_id=ANY(${changedSentenceIds}) AND tr.status IN ('APPROVED','PENDING')`;for(const row of staleRows){queries.push(sql`UPDATE listening_sentence_translation_versions SET status='SUPERSEDED',updated_at=now() WHERE id=${String(row.id)}`);queries.push(sql`INSERT INTO listening_translation_audit_log(id,translation_id,lesson_id,sentence_id,language_code,action,actor_id,details) VALUES(${crypto.randomUUID()},${String(row.id)},${lessonId},${String(row.sentence_id)},${String(row.language_code)},'SUPERSEDED',${session.id},${JSON.stringify({reason:"source_changed"})}::jsonb)`);}queries.push(sql`UPDATE listening_lesson_translation_sets SET status='DRAFT',updated_at=now() WHERE lesson_id=${lessonId}`);}
   queries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
-  try { await sql.transaction(queries); } catch (error) { return postgresErrorCode(error) === "23505" ? json({ error: "lesson_canonical_path_exists" }, 409) : json({ error: "lesson_update_failed" }, 500); }
-  if(changedSentenceIds.length)await scheduleTranslationsAfterContentChange(env,ctx,lessonId,session.id);
+  try { await sql.transaction(queries); } catch (error) { return postgresErrorCode(error) === "23505" ? json({ error: "lesson_placement_conflict" }, 409) : json({ error: "lesson_update_failed" }, 500); }
   return json({ ok: true, path: newPath });
 }
 
@@ -815,58 +743,9 @@ async function deleteLessonResource(env: Env, lessonId: string): Promise<LessonD
   return { ok: true };
 }
 
-async function scheduleTranslationsAfterContentChange(env:Env,ctx:ExecutionContext,lessonId:string,requestedBy:string){
-  try{await scheduleAutomaticTranslations(env,ctx,lessonId,undefined,requestedBy);}
-  catch(error){console.error(JSON.stringify({event:"lesson_translation_schedule_failed",lessonId,message:error instanceof Error?error.message:"unknown"}));}
-}
-
-async function cleanupFailedImport(env: Env, sql: ReturnType<typeof sqlFor>, resources: { lessonId: string; jobId: string; audioKey: string }): Promise<boolean> {
-  const { lessonId, jobId, audioKey } = resources;
-  try {
-    const cleanupQueries: TransactionQuery[] = [
-      sql`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`,
-      sql`DELETE FROM listening_lessons WHERE id=${lessonId}`,
-      sql`DELETE FROM listening_import_jobs WHERE id=${jobId}`,
-    ];
-    await sql.transaction(cleanupQueries);
-  } catch (error) {
-    console.error(JSON.stringify({ event: "listening_import_database_cleanup_failed", lessonId, jobId, message: error instanceof Error ? error.message : "unknown" }));
-    for (const [resource, query] of [
-      ["sentences", sql`DELETE FROM listening_sentences WHERE lesson_id=${lessonId}`],
-      ["lesson", sql`DELETE FROM listening_lessons WHERE id=${lessonId}`],
-      ["job", sql`DELETE FROM listening_import_jobs WHERE id=${jobId}`],
-    ] as const) {
-      try { await query; }
-      catch (fallbackError) { console.error(JSON.stringify({ event: "listening_import_database_fallback_cleanup_failed", resource, lessonId, jobId, message: fallbackError instanceof Error ? fallbackError.message : "unknown" })); }
-    }
-  }
-
-  try { await env.LISTENING_AUDIO.delete(audioKey); }
-  catch (error) { console.error(JSON.stringify({ event: "listening_import_audio_cleanup_failed", audioKey, message: error instanceof Error ? error.message : "unknown" })); }
-
-  try {
-    const rows = await sql`SELECT EXISTS(SELECT 1 FROM listening_sentences WHERE lesson_id=${lessonId}) OR EXISTS(SELECT 1 FROM listening_lessons WHERE id=${lessonId}) OR EXISTS(SELECT 1 FROM listening_import_jobs WHERE id=${jobId}) AS has_database_resources`;
-    const audioExists = await env.LISTENING_AUDIO.head(audioKey);
-    const complete = rows[0]?.has_database_resources !== true && audioExists === null;
-    if (!complete) console.error(JSON.stringify({ event: "listening_import_cleanup_incomplete", lessonId, jobId, audioKey, databaseResourcesRemain: rows[0]?.has_database_resources === true, audioRemains: audioExists !== null }));
-    return complete;
-  } catch (error) {
-    console.error(JSON.stringify({ event: "listening_import_cleanup_verification_failed", lessonId, jobId, audioKey, message: error instanceof Error ? error.message : "unknown" }));
-    return false;
-  }
-}
-
 function postgresErrorCode(error: unknown): string | null {
-  if (error instanceof ImportPersistenceError) return postgresErrorCode(error.causeValue);
   if (!error || typeof error !== "object" || !("code" in error)) return null;
   return typeof error.code === "string" ? error.code : null;
-}
-
-function alignmentErrorResponse(error: unknown): Response {
-  const code = error instanceof Error ? error.message : "alignment_failed";
-  if (code === "workers_ai_not_configured" || code === "workers_ai_model_invalid") return json({ error: code }, 503);
-  if (code.startsWith("workers_ai_")) return json({ error: "workers_ai_failed" }, 502);
-  return json({ error: "alignment_failed", details: code.startsWith("transcript_alignment_") ? code : "alignment_failed" }, 422);
 }
 
 async function boundedJson<T>(request: Request): Promise<T> { if(!request.body)throw new RequestBodyError("missing_body",400);const reader=request.body.getReader(),chunks:Uint8Array[]=[];let size=0;while(true){const{value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>MAX_JSON_BYTES){await reader.cancel();throw new RequestBodyError("body_too_large",413);}chunks.push(value);}const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return JSON.parse(new TextDecoder().decode(bytes)) as T; }

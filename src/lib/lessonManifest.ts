@@ -21,7 +21,9 @@ const CACHE_KEY = "me2listen-lesson-manifest-v3";
 
 export function findNextLesson(manifest: LessonManifest | undefined, currentLessonId: string, language = "en"): LessonManifestItem | undefined {
   if (!manifest) return undefined;
-  const lessons = manifest.lessons.filter((lesson) => lesson.language === language);
+  const current = manifest.lessons.find((lesson) => lesson.id === currentLessonId && lesson.language === language);
+  if (!current) return undefined;
+  const lessons = manifest.lessons.filter((lesson) => lesson.language === language && lesson.sectionId === current.sectionId);
   const currentIndex = lessons.findIndex((lesson) => lesson.id === currentLessonId);
   return currentIndex >= 0 ? lessons[currentIndex + 1] : undefined;
 }

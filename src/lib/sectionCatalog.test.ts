@@ -15,12 +15,13 @@ describe("section catalog", () => {
     expect(sections[0].lessons.map(item => item.id)).toEqual(["first", "second"]);
   });
 
-  it("preserves import order when legacy lessons share the same order", () => {
+  it("preserves filename-derived gaps while sorting by order", () => {
     const sections = buildLessonSections([
-      lesson({ id: "imported-first", name: "Zulu", order: 999 }),
-      lesson({ id: "imported-second", name: "Alpha", order: 999 }),
+      lesson({ id: "fifth", order: 5 }),
+      lesson({ id: "first", order: 1 }),
+      lesson({ id: "third", order: 3 }),
     ], "en", "topic");
-    expect(sections[0].lessons.map(item => item.id)).toEqual(["imported-first", "imported-second"]);
+    expect(sections[0].lessons.map(item => [item.id,item.order])).toEqual([["first",1],["third",3],["fifth",5]]);
   });
 
   it("filters lessons while retaining their section", () => {

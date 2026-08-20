@@ -1,48 +1,25 @@
-# Lesson Import Specification
+# Lesson and translation import
 
-This document defines the implemented Admin import contract. It supplements the general ingestion architecture in `me2listen_spec_en.md`.
+The Admin import page at `#/admin/listening` has two independent workflows.
 
-## Modes
+## Lesson package import
 
-The Admin account menu opens the card-based dashboard at `#/admin`. Its **Lesson import** card opens `#/admin/listening`, which exposes two independent modes:
+A package contains matching `NN_{name}.mp3` and `NN_{name}.srt` files, plus optional UTF-8 translation files named `NN_{name}.{language}.txt`. `NN` must be exactly two digits in the range `01`–`99`; invalid names are rejected without normalization. Supported translation codes are `vi`, `zh`, `ja`, and `ko`. Inputs may be selected directly or supplied in a ZIP.
 
-- **AI Import** accepts one audio file plus an Admin-authored transcript with one sentence per line. AI may determine timestamps only. The submitted transcript is canonical, audio content absent from that transcript is ignored, and the result remains a draft until the Admin reviews the segments and publishes it.
-- **Non-AI Import** accepts prepared MP3 and standard SRT pairs. It never calls AI and publishes each valid lesson after explicit batch confirmation.
+The shared filename stem pairs the resources. The numeric prefix becomes the stored lesson order, while `{name}` becomes the title and slug source. Order is unique only inside the selected Section; gaps are retained and file selection, archive, and processing order are irrelevant.
 
-## Non-AI contract
+The SRT is canonical for sentence order, source text, and timestamps. Every physical line in a translation TXT maps to the SRT cue at the same position. Blank lines, invalid UTF-8, unsupported language codes, duplicate languages, and line-count mismatches invalidate the complete lesson package before publication.
 
-Each lesson is exactly `<lesson-name>.mp3` plus `<lesson-name>.srt`. The common basename becomes the lesson title and the existing slug generator derives the slug. SRT must remain standard SRT and must not contain Me2Listen metadata.
+Validation reports unmatched pairs, duplicate orders in the batch, and conflicts with existing lessons in the selected Section per item. Confirmation processes only valid lessons; invalid lessons remain visible and do not block them. Each lesson, its sentences, optional translations, canonical path, and import state are committed in one transaction. A lesson-level failure rolls back that lesson, removes its uploaded audio, and does not stop later valid items.
 
-Direct multi-file upload and ZIP upload are input adapters for one batch pipeline:
+Lessons are displayed by stored order ascending within their Section. Deletion never renumbers remaining lessons, and the management UI exposes order as read-only.
 
-```text
-normalize → pair by basename → validate all → preview → confirm → process items
-```
+## Translation-only import
 
-A single pair is a batch of one. There is no separate single-import persistence path. Pair matching is case-insensitive after path and extension normalization; original names remain visible in validation errors.
+An Admin selects an existing lesson and adds one or more `{language, TXT file}` entries. Filenames are ignored in this workflow. The browser previews the line count and the Worker repeats every validation before writing.
 
-## Validation and execution
+All selected languages are replaced in one transaction. Existing active candidates for those lesson/language pairs are superseded; the imported Admin translations become the single approved set. Audio, source text, sentence positions, and timestamps are never modified.
 
-Before confirmation, the system validates file support and size, exact pairing, safe ZIP paths, SRT syntax/text/order/overlap, audio duration, generated names/slugs, duplicate slugs in the batch, and conflicts in the target section. Invalid items remain visible and do not block valid items.
+## Language registry
 
-Each confirmed valid item progresses through `QUEUED`, `PROCESSING`, and either `COMPLETED` or `FAILED`; pre-confirmation failures use `INVALID`. Completed items are not processed again. Interrupted or failed batches can resume/retry from their persisted batch state.
-
-Lesson, sentence, import-job, and R2 persistence reuse the common listening import service. An item failure rolls back that item's database records and R2 object. Batch staging is deleted after all processable items complete; it is retained while failed items need retry.
-
-## UI and i18n
-
-All import controls, progress labels, statuses, validation messages, and known backend error codes must use the selected UI locale (`vi`, `en`, `zh`, or `ja`). Lesson titles, section names, transcripts, filenames, and slugs are content and must not be translated.
-
-The selected section remains visible during preview. AI review provides per-sentence playback and editable text/start/end timestamps before publish.
-
-Level is optional in both modes. An omitted or blank level is stored as `NULL`; canonical routing uses the existing `all` path segment for lessons without a level.
-
-## Limits and deployment
-
-- 100 lessons per batch.
-- 20 MB per MP3.
-- 1 MB per SRT.
-- 40 MB per ZIP and 64 MB total extracted size.
-- 250 input resources.
-
-Apply `db/migrations/0008_batch_lesson_import.sql` before deploying the batch endpoints.
+The centralized import registry is defined in `src/lib/translationImport.ts`. Add future supported languages there and seed/activate the matching database language through a migration; no sentence or translation schema change is required.

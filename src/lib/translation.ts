@@ -1,5 +1,5 @@
 export const DEFAULT_TRANSLATION_LANGUAGE = "vi";
-export const BUILTIN_TRANSLATION_LANGUAGES = ["vi", "zh-CN", "ja"] as const;
+export const BUILTIN_TRANSLATION_LANGUAGES = ["vi", "zh", "ja", "ko"] as const;
 
 export interface PopularTranslationLanguage { code:string; name:string; nativeName:string; }
 export type LessonApprovalBlockReason="lesson_inactive"|"language_inactive"|"translation_set_empty"|"translation_set_rejected"|"translation_set_incomplete"|null;
@@ -8,7 +8,7 @@ export type LessonApprovalBlockReason="lesson_inactive"|"language_inactive"|"tra
 // and server-side authorization can never drift apart.
 export const POPULAR_TRANSLATION_LANGUAGES:readonly PopularTranslationLanguage[] = Object.freeze([
   {code:"en",name:"English",nativeName:"English"},
-  {code:"zh-CN",name:"Chinese (Simplified)",nativeName:"简体中文"},
+  {code:"zh",name:"Chinese",nativeName:"中文"},
   {code:"hi",name:"Hindi",nativeName:"हिन्दी"},
   {code:"es",name:"Spanish",nativeName:"Español"},
   {code:"fr",name:"French",nativeName:"Français"},

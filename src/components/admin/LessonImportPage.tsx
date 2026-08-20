@@ -1,19 +1,22 @@
-import { Check, FileArchive, Files, Play, RotateCcw, Upload, X } from "lucide-react";
+import { Check, FileArchive, Files, Plus, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { unzipSync } from "fflate";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth, type AdminImportBatch, type AdminImportBatchItem } from "../../auth";
 import { adminImportStatus, adminImportT, translateAdminImportError, type AdminImportMessageKey } from "../../adminImportI18n";
 import { NON_AI_IMPORT_LIMITS } from "../../lib/nonAiImport";
 import { readAudioDuration } from "../../lib/media";
+import { parseTranslationText, TRANSLATION_IMPORT_LANGUAGES } from "../../lib/translationImport";
+import { translationImportT } from "../../translationImportI18n";
 import type { UiLocale } from "../../types";
 import { AdminLayout } from "./AdminLayout";
 
 interface SectionOption { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string }
 interface CategoryOption { category_id: string; category_name: string; language_code: string }
-interface ReviewSentence { id: string; position: number; text: string; startMs: number; endMs: number }
 interface ImportError { value: string; fallback: AdminImportMessageKey }
-type ImportMode = "ai" | "non_ai";
 type InputMethod = "files" | "zip";
+type PageMode = "package" | "translations";
+interface LessonOption { id:string; title:string; sentence_count:number }
+interface TranslationEntry { id:string; languageCode:string; file?:File; lineCount?:number; error?:"blank"|"count"|"utf8"; line?:number; actual?:number }
 const LAST_BATCH_KEY = "me2listen-admin-last-import-batch";
 
 async function getJson<T>(path: string): Promise<T> {
@@ -28,27 +31,23 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [sectionId, setSectionId] = useState("");
+  const [mode,setMode]=useState<PageMode>("package");
+  const [lessons,setLessons]=useState<LessonOption[]>([]);
+  const [translationLessonId,setTranslationLessonId]=useState("");
+  const [translationEntries,setTranslationEntries]=useState<TranslationEntry[]>(()=>[{id:crypto.randomUUID(),languageCode:"vi"}]);
+  const [translationNotice,setTranslationNotice]=useState(false);
   const [showSectionCreator, setShowSectionCreator] = useState(false);
   const [newSectionCategoryId, setNewSectionCategoryId] = useState("");
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionDescription, setNewSectionDescription] = useState("");
   const [sectionNotice, setSectionNotice] = useState(false);
-  const [mode, setMode] = useState<ImportMode>("ai");
   const [inputMethod, setInputMethod] = useState<InputMethod>("files");
   const [level, setLevel] = useState("");
-  const [title, setTitle] = useState("");
-  const [audio, setAudio] = useState<File>();
-  const [transcript, setTranscript] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [archive, setArchive] = useState<File>();
-  const [lessonId, setLessonId] = useState("");
-  const [review, setReview] = useState<ReviewSentence[]>([]);
   const [batch, setBatch] = useState<AdminImportBatch>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ImportError>();
-  const previewAudio = useRef<HTMLAudioElement | undefined>(undefined);
-  const previewFrame = useRef<number | undefined>(undefined);
-  const [audioUrl, setAudioUrl] = useState("");
   const selectedSection = sections.find(item => item.section_id === sectionId);
   const t = (key: AdminImportMessageKey, values?: Record<string, string | number>) => adminImportT(locale, key, values);
 
@@ -62,7 +61,10 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
         setNewSectionCategoryId(current => current || result.categories[0]?.category_id || "");
       })
       .catch(reason => setError(toImportError(reason, "loadSectionsFailed")));
-  }, [auth.user?.isAdmin]);
+    void getJson<{lessons:LessonOption[]}>("/api/listening/admin/lessons?status=all&limit=200")
+      .then(result=>{setLessons(result.lessons);setTranslationLessonId(current=>current||result.lessons[0]?.id||"");})
+      .catch(()=>setError({value:translationImportT(locale,"loadLessonsFailed"),fallback:"requestFailed"}));
+  }, [auth.user?.isAdmin,locale]);
 
   useEffect(() => {
     if (!auth.user?.isAdmin) return;
@@ -70,37 +72,14 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
     if (saved) void auth.adminGetImportBatch(saved)
       .then(result => {
         setBatch(result.batch);
-        setMode("non_ai");
         setSectionId(result.batch.section_id);
       })
       .catch(() => localStorage.removeItem(LAST_BATCH_KEY));
   }, [auth.user?.isAdmin]);
 
-  useEffect(() => {
-    previewAudio.current?.pause();
-    if (previewFrame.current !== undefined) cancelAnimationFrame(previewFrame.current);
-    if (!audio) { setAudioUrl(""); return; }
-    const url = URL.createObjectURL(audio);
-    setAudioUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [audio]);
-
   const sectionLabel = selectedSection ? `${selectedSection.language_code.toUpperCase()} / ${selectedSection.category_name} / ${selectedSection.section_title}` : "—";
   if (auth.loading) return <AdminShell onHome={onHome} locale={locale}><p>{t("loading")}</p></AdminShell>;
   if (!auth.user?.isAdmin) return <AdminShell onHome={onHome} locale={locale}><p>{t("adminRequired")}</p></AdminShell>;
-
-  const processAi = async () => {
-    if (!audio) return;
-    setBusy(true); setError(undefined);
-    try {
-      const form = new FormData();
-      form.set("audio", audio); form.set("transcript", transcript); form.set("importMode", "ai"); form.set("title", title);
-      form.set("level", level); form.set("sectionId", sectionId); form.set("durationMs", String(await readAudioDuration(audio)));
-      const result = await auth.adminImportLesson(form);
-      setLessonId(result.lessonId); setReview(result.sentences as ReviewSentence[]);
-    } catch (reason) { setError(toImportError(reason, "aiImportFailed")); }
-    finally { setBusy(false); }
-  };
 
   const createSection = async () => {
     setBusy(true); setError(undefined); setSectionNotice(false);
@@ -111,15 +90,6 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
       setSectionId(section.section_id);
       setNewSectionTitle(""); setNewSectionDescription(""); setShowSectionCreator(false); setSectionNotice(true);
     } catch (reason) { setError(toImportError(reason, "createSectionFailed")); }
-    finally { setBusy(false); }
-  };
-
-  const publishAi = async () => {
-    setBusy(true); setError(undefined);
-    try {
-      await auth.adminReviewLesson(lessonId, { publish: true, sentences: review });
-      setLessonId(""); setReview([]); setAudio(undefined); setTranscript(""); setTitle("");
-    } catch (reason) { setError(toImportError(reason, "publishFailed")); }
     finally { setBusy(false); }
   };
 
@@ -154,50 +124,38 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
     finally { setBusy(false); }
   };
 
-  const playReviewSegment = (sentence: ReviewSentence) => {
-    if (!audioUrl) return;
-    previewAudio.current?.pause();
-    if (previewFrame.current !== undefined) cancelAnimationFrame(previewFrame.current);
-    const player = new Audio(audioUrl);
-    previewAudio.current = player; player.currentTime = sentence.startMs / 1000;
-    const stopAtEnd = () => {
-      if (player.currentTime >= sentence.endMs / 1000 || player.ended) player.pause();
-      else previewFrame.current = requestAnimationFrame(stopAtEnd);
-    };
-    void player.play().then(() => { previewFrame.current = requestAnimationFrame(stopAtEnd); }).catch(() => undefined);
-  };
-
   const resetBatch = () => {
     setBatch(undefined); setFiles([]); setArchive(undefined); localStorage.removeItem(LAST_BATCH_KEY); setError(undefined);
   };
 
+  const selectedLesson=lessons.find(lesson=>lesson.id===translationLessonId);
+  const duplicateTranslationLanguages=new Set(translationEntries.filter((entry,index,all)=>all.findIndex(candidate=>candidate.languageCode===entry.languageCode)!==index).map(entry=>entry.languageCode));
+  const validateTranslationFile=async(id:string,file?:File)=>{
+    const expected=selectedLesson?.sentence_count??0;
+    if(!file){setTranslationEntries(entries=>entries.map(entry=>entry.id===id?{id:entry.id,languageCode:entry.languageCode}:entry));return;}
+    try{const text=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(await file.arrayBuffer()),parsed=parseTranslationText(text,expected);setTranslationEntries(entries=>entries.map(entry=>entry.id!==id?entry:{...entry,file,lineCount:parsed.lines.length,error:parsed.error==="translation_blank_line"?"blank":parsed.error?"count":undefined,line:parsed.line,actual:parsed.actual}));}
+    catch{setTranslationEntries(entries=>entries.map(entry=>entry.id===id?{...entry,file,error:"utf8"}:entry));}
+  };
+  const importTranslations=async()=>{if(!selectedLesson)return;setBusy(true);setError(undefined);setTranslationNotice(false);try{const form=new FormData();form.set("lessonId",selectedLesson.id);for(const entry of translationEntries){form.append("languages",entry.languageCode);form.append("files",entry.file!);}await auth.adminImportTranslations(form);setTranslationNotice(true);setTranslationEntries([{id:crypto.randomUUID(),languageCode:"vi"}]);}catch(reason){setError(toImportError(reason,"requestFailed"));}finally{setBusy(false);}};
+  const translationsValid=!!selectedLesson&&translationEntries.length>0&&translationEntries.every(entry=>entry.file&&!entry.error&&entry.lineCount===selectedLesson.sentence_count&&!duplicateTranslationLanguages.has(entry.languageCode));
+
   return <AdminShell onHome={onHome} locale={locale}>
     <p><a href="/admin/listening/manage">{t("manageLessons")}</a></p>
-    <div className="import-mode-tabs"><button className={mode === "ai" ? "active" : ""} onClick={() => setMode("ai")}>{t("aiImport")}</button><button className={mode === "non_ai" ? "active" : ""} onClick={() => setMode("non_ai")}>{t("nonAiImport")}</button></div>
+    <div className="import-mode-tabs"><button className={mode==="package"?"active":""} type="button" onClick={()=>setMode("package")}>{translationImportT(locale,"lessonPackage")}</button><button className={mode==="translations"?"active":""} type="button" onClick={()=>setMode("translations")}>{translationImportT(locale,"translationOnly")}</button></div>
     {error && <p className="form-error" role="alert">{translateAdminImportError(locale, error.value, error.fallback)}</p>}
-    {sectionNotice && <p className="form-success" role="status">{t("sectionCreated")}</p>}
-    {!lessonId && !batch && <div className="import-section-creator"><button className="admin-inline-link" type="button" onClick={() => { setShowSectionCreator(current => !current); setSectionNotice(false); const categoryId = sections.find(item => item.section_id === sectionId)?.category_id; if (categoryId) setNewSectionCategoryId(categoryId); }}>{showSectionCreator ? t("cancelCreateSection") : t("createSection")}</button>{showSectionCreator && <form onSubmit={event => { event.preventDefault(); void createSection(); }}><h2>{t("newSection")}</h2><label>{t("category")}<select required value={newSectionCategoryId} onChange={event => setNewSectionCategoryId(event.target.value)}>{categories.map(item => <option key={item.category_id} value={item.category_id}>{item.language_code.toUpperCase()} / {item.category_name}</option>)}</select></label><label>{t("sectionTitle")}<input required maxLength={200} value={newSectionTitle} onChange={event => setNewSectionTitle(event.target.value)} /></label><label>{t("sectionDescription")}<textarea maxLength={1000} value={newSectionDescription} onChange={event => setNewSectionDescription(event.target.value)} /></label><div><button type="button" disabled={busy} onClick={() => setShowSectionCreator(false)}>{t("cancelCreateSection")}</button><button className="primary-button" disabled={busy || !newSectionCategoryId || !newSectionTitle.trim()}>{busy ? t("creatingSection") : t("createSection")}</button></div></form>}</div>}
-    {mode === "ai" ? <section>
-      <SectionAndLevel locale={locale} sections={sections} sectionId={sectionId} level={level} onSection={setSectionId} onLevel={setLevel} />
-      {!lessonId ? <form className="admin-import" onSubmit={event => { event.preventDefault(); void processAi(); }}>
-        <label>{t("title")}<input required maxLength={200} value={title} onChange={event => setTitle(event.target.value)} /></label>
-        <label>{t("audio")}<input required type="file" accept="audio/*" onChange={event => setAudio(event.target.files?.[0])} /></label>
-        <label>{t("transcript")}<textarea required maxLength={50000} value={transcript} onChange={event => setTranscript(event.target.value)} /></label>
-        <button className="primary-button" disabled={busy || !audio || !sectionId}>{busy ? t("processing") : t("processWithAi")}</button>
-      </form> : <div className="alignment-review">
-        <p><b>{t("targetSection")}:</b> {sectionLabel}</p>
-        {review.map((item, index) => <fieldset key={item.id}><legend>{t("sentence")} {item.position}</legend><button type="button" onClick={() => playReviewSegment(item)}><Play size={15} />{t("playSegment")}</button><input type="number" min={0} value={item.startMs} onChange={event => setReview(rows => rows.map((row, i) => i === index ? { ...row, startMs: Number(event.target.value) } : row))} /><input type="number" min={1} value={item.endMs} onChange={event => setReview(rows => rows.map((row, i) => i === index ? { ...row, endMs: Number(event.target.value) } : row))} /><textarea value={item.text} onChange={event => setReview(rows => rows.map((row, i) => i === index ? { ...row, text: event.target.value } : row))} /></fieldset>)}
-        <button className="primary-button" disabled={busy} onClick={() => void publishAi()}>{busy ? t("publishing") : t("publish")}</button>
-      </div>}
-    </section> : <section>
+    {sectionNotice && mode==="package" && <p className="form-success" role="status">{t("sectionCreated")}</p>}
+    {translationNotice&&mode==="translations"&&<p className="form-success" role="status">{translationImportT(locale,"translationImportSuccess")}</p>}
+    {mode==="package"&&!batch && <div className="import-section-creator"><button className="admin-inline-link" type="button" onClick={() => { setShowSectionCreator(current => !current); setSectionNotice(false); const categoryId = sections.find(item => item.section_id === sectionId)?.category_id; if (categoryId) setNewSectionCategoryId(categoryId); }}>{showSectionCreator ? t("cancelCreateSection") : t("createSection")}</button>{showSectionCreator && <form onSubmit={event => { event.preventDefault(); void createSection(); }}><h2>{t("newSection")}</h2><label>{t("category")}<select required value={newSectionCategoryId} onChange={event => setNewSectionCategoryId(event.target.value)}>{categories.map(item => <option key={item.category_id} value={item.category_id}>{item.language_code.toUpperCase()} / {item.category_name}</option>)}</select></label><label>{t("sectionTitle")}<input required maxLength={200} value={newSectionTitle} onChange={event => setNewSectionTitle(event.target.value)} /></label><label>{t("sectionDescription")}<textarea maxLength={1000} value={newSectionDescription} onChange={event => setNewSectionDescription(event.target.value)} /></label><div><button type="button" disabled={busy} onClick={() => setShowSectionCreator(false)}>{t("cancelCreateSection")}</button><button className="primary-button" disabled={busy || !newSectionCategoryId || !newSectionTitle.trim()}>{busy ? t("creatingSection") : t("createSection")}</button></div></form>}</div>}
+    {mode==="package"&&<section>
       {batch ? <BatchPreview locale={locale} batch={batch} busy={busy} onConfirm={() => void runBatch(false)} onRetry={() => void runBatch(true)} onReset={resetBatch} /> : <form className="admin-import" onSubmit={event => { event.preventDefault(); void validateBatch(); }}>
         <SectionAndLevel locale={locale} sections={sections} sectionId={sectionId} level={level} onSection={setSectionId} onLevel={setLevel} />
         <p className="selected-section"><b>{t("targetSection")}:</b> {sectionLabel}</p>
         <label>{t("inputMethod")}<select value={inputMethod} onChange={event => setInputMethod(event.target.value as InputMethod)}><option value="files">{t("directFiles")}</option><option value="zip">{t("zipArchive")}</option></select></label>
-        {inputMethod === "files" ? <label>{t("lessonResources")}<input required type="file" multiple accept=".mp3,.srt,audio/mpeg,application/x-subrip" onChange={event => setFiles(Array.from(event.target.files ?? []))} /><small>{t("directFilesHint")}</small></label> : <label>{t("zipArchive")}<input required type="file" accept=".zip,application/zip" onChange={event => setArchive(event.target.files?.[0])} /><small>{t("zipHint")}</small></label>}
+        {inputMethod === "files" ? <label>{t("lessonResources")}<input required type="file" multiple accept=".mp3,.srt,.txt,audio/mpeg,application/x-subrip,text/plain" onChange={event => setFiles(Array.from(event.target.files ?? []))} /><small>{t("directFilesHint")}</small></label> : <label>{t("zipArchive")}<input required type="file" accept=".zip,application/zip" onChange={event => setArchive(event.target.files?.[0])} /><small>{t("zipHint")}</small></label>}
         <button className="primary-button" disabled={busy || !sectionId || (inputMethod === "files" ? !files.length : !archive)}>{busy ? t("validating") : t("validatePreview")}</button>
       </form>}
     </section>}
+    {mode==="translations"&&<form className="admin-import translation-only-import" onSubmit={event=>{event.preventDefault();void importTranslations();}}><label>{translationImportT(locale,"lesson")}<select required value={translationLessonId} onChange={event=>{setTranslationLessonId(event.target.value);setTranslationEntries(entries=>entries.map(entry=>({id:entry.id,languageCode:entry.languageCode,file:entry.file})));}}><option value="">{translationImportT(locale,"selectLesson")}</option>{lessons.map(lesson=><option key={lesson.id} value={lesson.id}>{lesson.title} · {lesson.sentence_count}</option>)}</select>{selectedLesson&&<small>{translationImportT(locale,"expectedLines",{count:selectedLesson.sentence_count})}</small>}</label><h2>{translationImportT(locale,"translations")}</h2>{translationEntries.map(entry=><fieldset key={entry.id}><label>{translationImportT(locale,"targetLanguage")}<select value={entry.languageCode} onChange={event=>setTranslationEntries(entries=>entries.map(item=>item.id===entry.id?{...item,languageCode:event.target.value}:item))}>{TRANSLATION_IMPORT_LANGUAGES.map(language=><option key={language.code} value={language.code}>{language.name}</option>)}</select></label><label>{translationImportT(locale,"translationFile")}<input type="file" required accept=".txt,text/plain" onChange={event=>void validateTranslationFile(entry.id,event.target.files?.[0])}/></label>{entry.file&&!entry.error&&<small className="translation-validation valid">{translationImportT(locale,"matchesLines",{count:entry.lineCount??0})}</small>}{entry.error&&<small className="translation-validation invalid">{entry.error==="blank"?translationImportT(locale,"blankLine",{line:entry.line??0}):entry.error==="utf8"?translationImportT(locale,"invalidUtf8"):translationImportT(locale,"lineMismatch",{actual:entry.actual??entry.lineCount??0,expected:selectedLesson?.sentence_count??0})}</small>}{duplicateTranslationLanguages.has(entry.languageCode)&&<small className="translation-validation invalid">{translationImportT(locale,"duplicateLanguage")}</small>}<button type="button" disabled={translationEntries.length===1} onClick={()=>setTranslationEntries(entries=>entries.filter(item=>item.id!==entry.id))}><Trash2 size={15}/>{translationImportT(locale,"remove")}</button></fieldset>)}<button type="button" disabled={translationEntries.length>=TRANSLATION_IMPORT_LANGUAGES.length} onClick={()=>setTranslationEntries(entries=>[...entries,{id:crypto.randomUUID(),languageCode:TRANSLATION_IMPORT_LANGUAGES.find(language=>!entries.some(entry=>entry.languageCode===language.code))?.code??"vi"}])}><Plus size={15}/>{translationImportT(locale,"addTranslation")}</button><button className="primary-button" disabled={busy||!translationsValid}>{busy?translationImportT(locale,"importing"):translationImportT(locale,"importTranslations")}</button></form>}
   </AdminShell>;
 }
 
@@ -217,7 +175,7 @@ function BatchPreview({ batch, busy, onConfirm, onRetry, onReset, locale }: { ba
 
 function BatchItem({ item, locale }: { item: AdminImportBatchItem; locale: UiLocale }) {
   const messages = [...(Array.isArray(item.errors) ? item.errors : []), ...(item.errorMessage ? [item.errorMessage] : [])];
-  return <article className={`batch-item status-${item.status.toLocaleLowerCase()}`}><span className="batch-status-icon">{item.status === "COMPLETED" ? <Check size={16} /> : item.status === "INVALID" || item.status === "FAILED" ? <X size={16} /> : item.audioName?.toLocaleLowerCase().endsWith(".zip") ? <FileArchive size={16} /> : <Files size={16} />}</span><div><b>{item.lessonName}</b><small>{item.audioName ?? adminImportT(locale, "missingMp3")} · {item.srtName ?? adminImportT(locale, "missingSrt")}</small>{item.slug && <small>{adminImportT(locale, "slug")}: {item.slug} · {adminImportT(locale, "duration")}: {formatDuration(item.durationMs)} · {adminImportT(locale, "segments")}: {item.segmentCount ?? "—"}</small>}{messages.map((message, index) => <em key={`${message}-${index}`}>{translateAdminImportError(locale, message, "itemFailed")}</em>)}</div><strong>{adminImportStatus(locale, item.status)}</strong></article>;
+  return <article className={`batch-item status-${item.status.toLocaleLowerCase()}`}><span className="batch-status-icon">{item.status === "COMPLETED" ? <Check size={16} /> : item.status === "INVALID" || item.status === "FAILED" ? <X size={16} /> : item.audioName?.toLocaleLowerCase().endsWith(".zip") ? <FileArchive size={16} /> : <Files size={16} />}</span><div><b>{String(item.sortOrder).padStart(2,"0")}_{item.lessonName}</b><small>{item.audioName ?? adminImportT(locale, "missingMp3")} · {item.srtName ?? adminImportT(locale, "missingSrt")}</small>{Object.keys(item.translationFiles??{}).length>0&&<small>Translations: {Object.keys(item.translationFiles).map(code=>code.toUpperCase()).join(", ")}</small>}{item.slug && <small>{adminImportT(locale, "slug")}: {item.slug} · {adminImportT(locale, "duration")}: {formatDuration(item.durationMs)} · {adminImportT(locale, "segments")}: {item.segmentCount ?? "—"}</small>}{messages.map((message, index) => <em key={`${message}-${index}`}>{translateAdminImportError(locale, message, "itemFailed")}</em>)}</div><strong>{adminImportStatus(locale, item.status)}</strong></article>;
 }
 
 function toImportError(reason: unknown, fallback: AdminImportMessageKey): ImportError { return { value: reason instanceof Error ? reason.message : "request_failed", fallback }; }
