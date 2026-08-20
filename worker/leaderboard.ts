@@ -83,36 +83,40 @@ export async function updateLeaderboardSettings(request: Request, env: Env, upda
   const sql = sqlFor(env);
   const auditId = crypto.randomUUID();
   const rows = await sql`
-    WITH previous AS (
-      SELECT study_7_day_limit,study_30_day_limit,translation_7_day_limit,translation_30_day_limit
+    WITH previous AS MATERIALIZED (
+      SELECT singleton,study_7_day_limit,study_30_day_limit,translation_7_day_limit,translation_30_day_limit
       FROM leaderboard_settings WHERE singleton=TRUE
       FOR UPDATE
     ), updated AS (
-      UPDATE leaderboard_settings SET
+      UPDATE leaderboard_settings AS target SET
         study_7_day_limit=${settings.study7DayLimit},
         study_30_day_limit=${settings.study30DayLimit},
         translation_7_day_limit=${settings.translation7DayLimit},
         translation_30_day_limit=${settings.translation30DayLimit},
         updated_by=${updatedBy}, updated_at=now()
-      WHERE singleton=TRUE
-      RETURNING study_7_day_limit,study_30_day_limit,translation_7_day_limit,translation_30_day_limit,updated_at
+      FROM previous
+      WHERE target.singleton=previous.singleton
+      RETURNING target.study_7_day_limit,target.study_30_day_limit,target.translation_7_day_limit,target.translation_30_day_limit,target.updated_at
     ), audit AS (
       INSERT INTO leaderboard_settings_audit_log(id,actor_user_id,previous_settings,next_settings)
-      SELECT ${auditId},${updatedBy},jsonb_build_object(
-        'study7DayLimit',previous.study_7_day_limit,
-        'study30DayLimit',previous.study_30_day_limit,
-        'translation7DayLimit',previous.translation_7_day_limit,
-        'translation30DayLimit',previous.translation_30_day_limit
-      ),jsonb_build_object(
-        'study7DayLimit',updated.study_7_day_limit,
-        'study30DayLimit',updated.study_30_day_limit,
-        'translation7DayLimit',updated.translation_7_day_limit,
-        'translation30DayLimit',updated.translation_30_day_limit
-      ) FROM previous CROSS JOIN updated
+      VALUES (${auditId},${updatedBy},
+        (SELECT jsonb_build_object(
+          'study7DayLimit',previous.study_7_day_limit,
+          'study30DayLimit',previous.study_30_day_limit,
+          'translation7DayLimit',previous.translation_7_day_limit,
+          'translation30DayLimit',previous.translation_30_day_limit
+        ) FROM previous),
+        (SELECT jsonb_build_object(
+          'study7DayLimit',updated.study_7_day_limit,
+          'study30DayLimit',updated.study_30_day_limit,
+          'translation7DayLimit',updated.translation_7_day_limit,
+          'translation30DayLimit',updated.translation_30_day_limit
+        ) FROM updated)
+      )
       RETURNING id
     )
-    SELECT updated.*,(SELECT COUNT(*)::int FROM audit) AS audit_count FROM updated`;
-  if (!rows[0] || Number(rows[0].audit_count) !== 1) throw new Error("leaderboard_settings_update_failed");
+    SELECT updated.* FROM updated CROSS JOIN audit`;
+  if (!rows[0]) throw new Error("leaderboard_settings_update_failed");
   return json({ settings: mapSettings(rows[0]) });
 }
 
