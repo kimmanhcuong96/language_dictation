@@ -6,12 +6,11 @@
 
    ```bash
    npx wrangler queues create me2listen-lesson-import
-   npx wrangler queues create me2listen-lesson-import-dlq
    ```
 
 4. Deploy the Worker, then open `#/admin/listening` as an administrator.
 
-Confirmed imports run through Cloudflare Queues. Delivery is idempotent and retried; a one-minute outbox recovery trigger republishes jobs if a request is interrupted between the database write and Queue publication. Exhausted infrastructure retries are moved through the dead-letter queue and recorded as failed instead of remaining in `PROCESSING`.
+Confirmed imports run through Cloudflare Queues. Delivery is idempotent and retried; a one-minute outbox recovery trigger republishes jobs if a request is interrupted between the database write and Queue publication. Cloudflare automatically creates the configured dead-letter queue. After retries are exhausted, the recovery trigger records the item as failed instead of leaving it in `PROCESSING`.
 
 Lesson packages support direct files or ZIP archives:
 

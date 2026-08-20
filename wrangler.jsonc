@@ -26,11 +26,6 @@
         "max_retries": 5,
         "retry_delay": 15,
         "dead_letter_queue": "me2listen-lesson-import-dlq"
-      },
-      {
-        "queue": "me2listen-lesson-import-dlq",
-        "max_batch_size": 10,
-        "max_batch_timeout": 5
       }
     ]
   },

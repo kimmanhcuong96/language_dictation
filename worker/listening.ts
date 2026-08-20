@@ -649,7 +649,7 @@ async function enqueuePendingImportItems(env:Env,sql:TransactionSql,batchId:stri
 
 async function enqueueImportItem(env:Env,sql:TransactionSql,batchId:string,itemId:string,ownerId:string,retryFailed:boolean){
   const token=crypto.randomUUID();
-  const rows=await sql`UPDATE listening_import_batch_items i SET status=CASE WHEN i.status='FAILED' THEN 'QUEUED' ELSE i.status END,job_token=CASE WHEN i.job_token IS NULL OR i.status='FAILED' THEN ${token} ELSE i.job_token END,processing_started_at=CASE WHEN i.status='FAILED' THEN NULL ELSE i.processing_started_at END,error_message=CASE WHEN i.status='FAILED' THEN NULL ELSE i.error_message END,updated_at=now() FROM listening_import_batches b WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.id=i.batch_id AND b.created_by=${ownerId} AND b.confirmed_at IS NOT NULL AND (i.status='QUEUED' OR i.status='PROCESSING' OR (${retryFailed} AND i.status='FAILED')) RETURNING i.job_token,i.status`;
+  const rows=await sql`UPDATE listening_import_batch_items i SET status=CASE WHEN i.status='FAILED' THEN 'QUEUED' ELSE i.status END,job_token=CASE WHEN i.job_token IS NULL OR i.status='FAILED' THEN ${token} ELSE i.job_token END,attempt_count=CASE WHEN i.status='FAILED' THEN 0 ELSE i.attempt_count END,processing_delivery_id=CASE WHEN i.status='FAILED' THEN NULL ELSE i.processing_delivery_id END,processing_started_at=CASE WHEN i.status='FAILED' THEN NULL ELSE i.processing_started_at END,error_message=CASE WHEN i.status='FAILED' THEN NULL ELSE i.error_message END,updated_at=now() FROM listening_import_batches b WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.id=i.batch_id AND b.created_by=${ownerId} AND b.confirmed_at IS NOT NULL AND (i.status='QUEUED' OR i.status='PROCESSING' OR (${retryFailed} AND i.status='FAILED')) RETURNING i.job_token,i.status`;
   const item=rows[0];
   if(!item){const completed=await sql`SELECT 1 FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE i.id=${itemId} AND i.batch_id=${batchId} AND b.created_by=${ownerId} AND i.status='COMPLETED'`;if(completed.length)return;throw new Error("batch_item_not_processable");}
   const jobToken=String(item.job_token);
@@ -659,7 +659,9 @@ async function enqueueImportItem(env:Env,sql:TransactionSql,batchId:string,itemI
 
 export async function recoverPendingLessonImports(env:Env){
   const sql=sqlFor(env);
-  const items=await sql`SELECT i.id,i.batch_id,b.created_by FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE b.confirmed_at IS NOT NULL AND ((i.status='QUEUED' AND (i.enqueued_at IS NULL OR i.enqueued_at<now()-interval '1 minute')) OR (i.status='PROCESSING' AND (i.processing_started_at IS NULL OR i.processing_started_at<now()-${IMPORT_PROCESSING_LEASE_SECONDS}*interval '1 second'))) ORDER BY i.updated_at LIMIT 100`;
+  const exhausted=await sql`UPDATE listening_import_batch_items SET status='FAILED',error_message='queue_retries_exhausted',processing_delivery_id=NULL,processing_started_at=NULL,updated_at=now() WHERE status='PROCESSING' AND attempt_count>=6 AND (processing_started_at IS NULL OR processing_started_at<now()-${IMPORT_PROCESSING_LEASE_SECONDS}*interval '1 second') RETURNING batch_id`;
+  for(const batchId of new Set(exhausted.map(item=>String(item.batch_id))))await batchStatusQuery(sql,batchId);
+  const items=await sql`SELECT i.id,i.batch_id,b.created_by FROM listening_import_batch_items i JOIN listening_import_batches b ON b.id=i.batch_id WHERE b.confirmed_at IS NOT NULL AND ((i.status='QUEUED' AND (i.enqueued_at IS NULL OR i.enqueued_at<now()-interval '1 minute')) OR (i.status='PROCESSING' AND i.attempt_count<6 AND (i.processing_started_at IS NULL OR i.processing_started_at<now()-${IMPORT_PROCESSING_LEASE_SECONDS}*interval '1 second'))) ORDER BY i.updated_at LIMIT 100`;
   for(const item of items)try{await enqueueImportItem(env,sql,String(item.batch_id),String(item.id),String(item.created_by),false);}catch(error){console.error(JSON.stringify({event:"batch_import_outbox_recovery_failed",batchId:item.batch_id,itemId:item.id,message:error instanceof Error?error.message:"unknown"}));}
 }
 
@@ -755,14 +757,6 @@ async function markImportItemFailed(sql:TransactionSql,message:string,batchId:st
   await sql.transaction([
     sql`UPDATE listening_import_batch_items SET status='FAILED',error_message=${message.slice(0,500)},processing_delivery_id=NULL,processing_started_at=NULL,updated_at=now() WHERE id=${itemId} AND job_token=${jobToken} AND status<>'COMPLETED'`,
     batchStatusQuery(sql,batchId),
-  ]);
-}
-
-export async function failLessonImportQueueMessage(env:Env,message:LessonImportQueueMessage,reason="queue_retries_exhausted"){
-  const sql=sqlFor(env);
-  await sql.transaction([
-    sql`UPDATE listening_import_batch_items SET status='FAILED',error_message=${reason},processing_delivery_id=NULL,processing_started_at=NULL,updated_at=now() WHERE id=${message.itemId} AND batch_id=${message.batchId} AND job_token=${message.jobToken} AND status<>'COMPLETED' AND (status<>'PROCESSING' OR processing_started_at IS NULL OR processing_started_at<now()-${IMPORT_PROCESSING_LEASE_SECONDS}*interval '1 second')`,
-    batchStatusQuery(sql,message.batchId),
   ]);
 }
 

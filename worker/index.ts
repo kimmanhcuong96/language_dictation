@@ -3,7 +3,7 @@ import { lessons } from "../src/data/lessons";
 import { answerScore } from "../src/lib/text";
 import { evaluateAnswer } from "../src/lib/dictation";
 import { normalizeListeningPreferences, parseListeningPreferences } from "../src/lib/listeningPreferences";
-import { failLessonImportQueueMessage, processLessonImportQueueMessage, recoverPendingLessonImports, routeListening, serveRobots, serveSeoLesson, serveSeoLibrary, serveSitemap, type LessonImportQueueMessage } from "./listening";
+import { processLessonImportQueueMessage, recoverPendingLessonImports, routeListening, serveRobots, serveSeoLesson, serveSeoLibrary, serveSitemap, type LessonImportQueueMessage } from "./listening";
 import { getLeaderboard as getRankings, getLeaderboardSettings, pruneLeaderboardData, updateLeaderboardSettings } from "./leaderboard";
 
 const SESSION_COOKIE = "__Host-echotype_session";
@@ -25,12 +25,10 @@ const db = (env:Env) => neon(env.DATABASE_URL) as TransactionSql;
 export default {
   async fetch(request,env,ctx):Promise<Response> { try { const url=new URL(request.url); let response: Response; const legacyTarget=legacyLearningTarget(url); if(legacyTarget)response=new Response(null,{status:301,headers:{Location:legacyTarget,"Cache-Control":"public, max-age=86400"}}); else if (url.pathname === "/sitemap.xml") response = await serveSitemap(env, request); else if (url.pathname === "/robots.txt") response = serveRobots(request); else if (url.pathname.startsWith("/lessons/")) response = await serveSeoLesson(request, env, url); else if (/^\/(?:en|ja|zh)(?:\/|$)/u.test(url.pathname)) response = await serveCachedSeoLibrary(request,env,ctx,url) ?? await env.ASSETS.fetch(request); else response = url.pathname.startsWith("/api/")||url.pathname.startsWith("/auth/") ? await routeApi(request,env,ctx,url) : await env.ASSETS.fetch(request); return withSecurityHeaders(response); } catch(error) { console.error(JSON.stringify({event:"request_error",message:error instanceof Error?error.message:"unknown"})); return error instanceof HttpError?json({error:error.code},error.status):json({error:"internal_error"},500); } },
   async queue(batch:MessageBatch<unknown>,env):Promise<void>{
-    const deadLetter=batch.queue.endsWith("-dlq");
     for(const message of batch.messages){
       try{
         const body=parseLessonImportQueueMessage(message.body);
         if(!body){console.error(JSON.stringify({event:"lesson_import_queue_invalid_message",queue:batch.queue,messageId:message.id}));message.ack();continue;}
-        if(deadLetter){await failLessonImportQueueMessage(env,body);message.ack();continue;}
         const result=await processLessonImportQueueMessage(env,body,message.id,message.attempts>1);
         if(result==="busy")message.retry({delaySeconds:15});else message.ack();
       }catch(error){console.error(JSON.stringify({event:"lesson_import_queue_attempt_failed",queue:batch.queue,messageId:message.id,attempt:message.attempts,error:error instanceof Error?error.message:"unknown"}));message.retry({delaySeconds:15});}
