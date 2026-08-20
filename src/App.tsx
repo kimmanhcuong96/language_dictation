@@ -536,7 +536,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  if (auth.loading) return <span className="avatar avatar-loading" />;
+  if (auth.loading) return <span className="account-pill account-pill-loading" aria-hidden="true"><span className="account-trigger-avatar avatar-loading"/><span/></span>;
   if (!auth.user) return <button className="login-button" onClick={auth.login}><LogIn size={16} />{t("signIn")}</button>;
   const initials = auth.user.displayName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 
@@ -548,8 +548,11 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
   };
 
   return <div className="account-wrap">
-    <button className="avatar" onClick={() => setOpen(!open)} aria-label={auth.user.displayName}>{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</button>
-    {open && <div className="account-popover">
+    <div className="account-pill">
+      <button className="account-trigger" type="button" onClick={() => setOpen(!open)} aria-label={auth.user.displayName} aria-controls="account-popover" aria-expanded={open}><span className="account-trigger-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><span className="account-trigger-name">{auth.user.displayName}</span></button>
+      <button className="account-quick-logout" type="button" title={t("logout")} aria-label={t("logout")} onClick={() => void auth.logout()}><LogOut size={16}/></button>
+    </div>
+    {open && <div className="account-popover" id="account-popover">
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
       {auth.user.isAdmin && <button onClick={() => { navigateToPath("/admin"); setOpen(false); }}><Library size={16} />{t("contentManagement")}</button>}
