@@ -1,8 +1,17 @@
 # Listening lesson import
 
-1. Apply all migrations through `db/migrations/0014_lesson_filename_ordering.sql`.
+1. Apply all migrations through `db/migrations/0019_durable_lesson_import_queue.sql`.
 2. Configure `DATABASE_URL`, Google OAuth credentials, `ADMIN_EMAILS`, and the `LISTENING_AUDIO` R2 binding.
-3. Open `#/admin/listening` as an administrator.
+3. Create the import queues once before the first deployment:
+
+   ```bash
+   npx wrangler queues create me2listen-lesson-import
+   npx wrangler queues create me2listen-lesson-import-dlq
+   ```
+
+4. Deploy the Worker, then open `#/admin/listening` as an administrator.
+
+Confirmed imports run through Cloudflare Queues. Delivery is idempotent and retried; a one-minute outbox recovery trigger republishes jobs if a request is interrupted between the database write and Queue publication. Exhausted infrastructure retries are moved through the dead-letter queue and recorded as failed instead of remaining in `PROCESSING`.
 
 Lesson packages support direct files or ZIP archives:
 

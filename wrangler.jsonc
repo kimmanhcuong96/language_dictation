@@ -14,11 +14,31 @@
   "r2_buckets": [
     { "binding": "LISTENING_AUDIO", "bucket_name": "me2listen-audio" }
   ],
+  "queues": {
+    "producers": [
+      { "binding": "LESSON_IMPORT_QUEUE", "queue": "me2listen-lesson-import" }
+    ],
+    "consumers": [
+      {
+        "queue": "me2listen-lesson-import",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 5,
+        "retry_delay": 15,
+        "dead_letter_queue": "me2listen-lesson-import-dlq"
+      },
+      {
+        "queue": "me2listen-lesson-import-dlq",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5
+      }
+    ]
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
   },
   "triggers": {
-    "crons": ["17 3 * * *"]
+    "crons": ["*/1 * * * *", "17 3 * * *"]
   }
 }

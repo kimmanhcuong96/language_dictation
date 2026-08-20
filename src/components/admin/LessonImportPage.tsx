@@ -1,6 +1,6 @@
 import { Check, FileArchive, Files, Plus, RotateCcw, Trash2, Upload, X } from "lucide-react";
 import { unzipSync } from "fflate";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth, type AdminImportBatch, type AdminImportBatchItem } from "../../auth";
 import { adminImportStatus, adminImportT, translateAdminImportError, type AdminImportMessageKey } from "../../adminImportI18n";
 import { NON_AI_IMPORT_LIMITS } from "../../lib/nonAiImport";
@@ -51,6 +51,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
   const [batch, setBatch] = useState<AdminImportBatch>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ImportError>();
+  const batchRunnerActive = useRef(false);
   const selectedSection = sections.find(item => item.section_id === sectionId);
   const t = (key: AdminImportMessageKey, values?: Record<string, string | number>) => adminImportT(locale, key, values);
 
@@ -111,21 +112,17 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
   };
 
   const runBatch = async (retryFailed = false) => {
-    if (!batch) return;
+    if (!batch || batchRunnerActive.current) return;
+    batchRunnerActive.current=true;
     setBusy(true); setError(undefined);
     let current = batch;
     try {
-      if (!current.confirmed_at) current = (await auth.adminConfirmImportBatch(current.id)).batch;
-      const processable = current.items.filter(item => item.status === "QUEUED" || item.status === "PROCESSING" || (retryFailed && item.status === "FAILED"));
-      for (const item of processable) {
-        setBatch(markProcessing(current, item.id));
-        try { current = (await auth.adminProcessImportBatchItem(current.id, item.id)).batch; }
-        catch (reason) { setError(toImportError(reason, "itemFailed")); current = (await auth.adminGetImportBatch(current.id)).batch; }
-        setBatch(current);
-      }
-      setBatch((await auth.adminGetImportBatch(current.id)).batch);
+      if (!current.confirmed_at || !retryFailed) current = (await auth.adminConfirmImportBatch(current.id)).batch;
+      if(retryFailed)for(const item of current.items.filter(candidate=>candidate.status==="FAILED"))current=(await auth.adminProcessImportBatchItem(current.id,item.id)).batch;
+      setBatch(current);
+      while(current.counts.queued>0||current.counts.processing>0){await delay(1500);current=(await auth.adminGetImportBatch(current.id)).batch;setBatch(current);}
     } catch (reason) { setError(toImportError(reason, "batchProcessingFailed")); }
-    finally { setBusy(false); }
+    finally { batchRunnerActive.current=false;setBusy(false); }
   };
 
   const resetBatch = () => {
@@ -177,7 +174,7 @@ function SectionAndLevel({ sections, sectionId, level, onSection, onLevel, local
 function BatchPreview({ batch, busy, onConfirm, onRetry, onReset, locale }: { batch: AdminImportBatch; busy: boolean; onConfirm: () => void; onRetry: () => void; onReset: () => void; locale: UiLocale }) {
   const t = (key: AdminImportMessageKey, values?: Record<string, string | number>) => adminImportT(locale, key, values);
   const progress = batch.counts.total ? Math.round((batch.counts.completed + batch.counts.failed + batch.counts.invalid) / batch.counts.total * 100) : 0;
-  return <div className="batch-preview"><header><div><span className="overline">{t("batchValidation")}</span><h2>{batch.language_name} / {batch.category_name} / {batch.section_title}</h2><small>{t("level")}: <b>{batch.level ?? "—"}</b></small></div><button type="button" onClick={onReset}><X size={16} />{t("newBatch")}</button></header><div className="batch-summary"><span>{t("total")} <b>{batch.counts.total}</b></span><span>{t("valid")} <b>{batch.counts.valid}</b></span><span>{t("invalid")} <b>{batch.counts.invalid}</b></span><span>{t("completed")} <b>{batch.counts.completed}</b></span><span>{t("processingStatus")} <b>{batch.counts.processing}</b></span><span>{t("failed")} <b>{batch.counts.failed}</b></span><span>{t("remaining")} <b>{batch.counts.queued}</b></span></div><div className="batch-progress"><i style={{ width: `${progress}%` }} /></div><div className="batch-items">{batch.items.map(item => <BatchItem key={item.id} item={item} locale={locale} />)}</div><div className="batch-actions">{!batch.confirmed_at && <button className="primary-button" disabled={busy || batch.counts.valid === 0} onClick={onConfirm}><Upload size={16} />{busy ? t("importing") : t("confirmImport", { count: batch.counts.valid })}</button>}{batch.confirmed_at && (batch.counts.queued > 0 || batch.counts.processing > 0) && <button className="primary-button" disabled={busy} onClick={onConfirm}>{busy ? t("processing") : t("resumeImport")}</button>}{batch.counts.failed > 0 && <button disabled={busy} onClick={onRetry}><RotateCcw size={16} />{t("retryFailed")}</button>}</div></div>;
+  return <div className="batch-preview"><header><div><span className="overline">{t("batchValidation")}</span><h2>{batch.language_name} / {batch.category_name} / {batch.section_title}</h2><small>{t("level")}: <b>{batch.level ?? "—"}</b></small></div><button type="button" disabled={busy} onClick={onReset}><X size={16} />{t("newBatch")}</button></header><div className="batch-summary"><span>{t("total")} <b>{batch.counts.total}</b></span><span>{t("valid")} <b>{batch.counts.valid}</b></span><span>{t("invalid")} <b>{batch.counts.invalid}</b></span><span>{t("completed")} <b>{batch.counts.completed}</b></span><span>{t("processingStatus")} <b>{batch.counts.processing}</b></span><span>{t("failed")} <b>{batch.counts.failed}</b></span><span>{t("remaining")} <b>{batch.counts.queued}</b></span></div><div className="batch-progress"><i style={{ width: `${progress}%` }} /></div><div className="batch-items">{batch.items.map(item => <BatchItem key={item.id} item={item} locale={locale} />)}</div><div className="batch-actions">{!batch.confirmed_at && <button className="primary-button" disabled={busy || batch.counts.valid === 0} onClick={onConfirm}><Upload size={16} />{busy ? t("importing") : t("confirmImport", { count: batch.counts.valid })}</button>}{batch.confirmed_at && (batch.counts.queued > 0 || batch.counts.processing > 0) && <button className="primary-button" disabled={busy} onClick={onConfirm}>{busy ? t("processing") : t("resumeImport")}</button>}{batch.counts.failed > 0 && <button disabled={busy} onClick={onRetry}><RotateCcw size={16} />{t("retryFailed")}</button>}</div></div>;
 }
 
 function BatchItem({ item, locale }: { item: AdminImportBatchItem; locale: UiLocale }) {
@@ -187,7 +184,7 @@ function BatchItem({ item, locale }: { item: AdminImportBatchItem; locale: UiLoc
 }
 
 function toImportError(reason: unknown, fallback: AdminImportMessageKey): ImportError { return { value: reason instanceof Error ? reason.message : "request_failed", fallback }; }
-function markProcessing(batch: AdminImportBatch, itemId: string): AdminImportBatch { return { ...batch, items: batch.items.map(item => item.id === itemId ? { ...item, status: "PROCESSING" } : item), counts: { ...batch.counts, queued: Math.max(0, batch.counts.queued - 1), processing: 1 } }; }
+function delay(milliseconds:number){return new Promise<void>(resolve=>setTimeout(resolve,milliseconds));}
 function formatDuration(value: number | null) { if (!value) return "—"; const total = Math.round(value / 1000); return `${Math.floor(total / 60).toString().padStart(2, "0")}:${(total % 60).toString().padStart(2, "0")}`; }
 async function durationEntriesForFiles(files: File[]) { return measureDurations(files.filter(file => file.name.toLocaleLowerCase().endsWith(".mp3")).map(file => ({ name: file.name, file }))); }
 async function durationEntriesForZip(archive?: File) {
