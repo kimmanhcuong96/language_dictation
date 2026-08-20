@@ -432,7 +432,7 @@ html[data-theme="dark"]{
   --dark-surface-raised:#1b2430;
   --dark-surface-muted:#222d3a;
   --dark-border:#344151;
-  --dark-border-strong:#657b91;
+  --dark-border-strong:#4d5e70;
   --dark-text:#f1f5f3;
   --dark-muted:#aeb9b4;
   --dark-subtle:#84928c;
@@ -451,7 +451,7 @@ html[data-theme="dark"]{
   --brand-strong:var(--dark-accent-hover);
   --brand-soft:var(--dark-accent-soft);
   --brand-contrast:#0b1710;
-  --focus-ring:#a2e8ba;
+  --focus-ring:#5b8d70;
   --sage:#8dbba2;
   background:var(--dark-canvas);
   color:var(--dark-text);
@@ -556,7 +556,7 @@ html[data-theme="dark"] .section-lesson-card.completed,
 html[data-theme="dark"] .content-card.completed{border-color:#4e7b5f;background:#1b3826;box-shadow:inset 3px 0 #67c98e}
 html[data-theme="dark"] input::placeholder,
 html[data-theme="dark"] textarea::placeholder{color:var(--dark-subtle)}
-html[data-theme="dark"] :where(button,a,input,select,textarea):focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+html[data-theme="dark"] :where(button,a,input,select,textarea):focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 
 html[data-theme="dark"] .admin-system.admin-theme-dark{
   --admin-bg:var(--dark-canvas);
@@ -664,7 +664,7 @@ html[data-theme="dark"] .lesson-mode-tabs{
   box-shadow:inset 0 1px #ffffff05,0 5px 18px #00000029
 }
 html[data-theme="dark"] .lesson-mode-tabs button{color:#9eaaa4}
-html[data-theme="dark"] .lesson-mode-tabs button:hover:not(.active){background:#1b2630!important;border-color:#344452!important;color:#dbe5df}
+html[data-theme="dark"] .lesson-mode-tabs button:hover:not(.active){background:#1b2630!important;border-color:#34414e!important;color:#dbe5df}
 html[data-theme="dark"] .lesson-mode-tabs button.active,
 html[data-theme="dark"] .lesson-mode-tabs .transcript-tab.active{
   border-color:#3c9e63!important;
@@ -696,7 +696,7 @@ html[data-theme="dark"] .practice-toolbar .playback-options select{
   color:#dce5e0
 }
 html[data-theme="dark"] .playback-settings-button:hover{
-  border-color:#4f8062!important;
+  border-color:#466b55!important;
   background:#21362a!important;
   color:#8be2ad
 }
@@ -724,8 +724,8 @@ html[data-theme="dark"] .answer-visible .answer-input-wrap textarea{
   caret-color:#7bdca0;
   box-shadow:inset 0 1px 2px #0005
 }
-html[data-theme="dark"] .answer-input-wrap textarea:hover:not(:focus){border-color:#526171!important}
-html[data-theme="dark"] .answer-input-wrap textarea:focus{border-color:#5bbd7e!important;box-shadow:0 0 0 3px #4ebd7629,inset 0 1px 2px #0005}
+html[data-theme="dark"] .answer-input-wrap textarea:hover:not(:focus){border-color:#465563!important}
+html[data-theme="dark"] .answer-input-wrap textarea:focus{border-color:#4f8b68!important;box-shadow:0 0 0 2px #4f8b6838,inset 0 1px 2px #0005}
 html[data-theme="dark"] .answer-visible .answer-input-wrap textarea{border-color:#3f7654!important;background:#14231a!important;color:#dff4e7}
 html[data-theme="dark"] .microphone-placeholder,
 html[data-theme="dark"] .retry-answer-button{border-color:#40505f!important;background:#202a35!important;color:#c4d0c9;box-shadow:0 3px 10px #0005}
@@ -780,5 +780,7 @@ html[data-theme="dark"] .lesson-practice-card.full-transcript-view li{color:#dce
 html[data-theme="dark"] .lesson-practice-card.full-transcript-view li.current{background:#1a3826;color:#a7e9be;box-shadow:inset 3px 0 #55bd7c}
 html[data-theme="dark"] .lesson-practice-card.full-transcript-view li.current .transcript-sentence>span{color:#75d297}
 html[data-theme="dark"] .transcript-sentence>span{color:#85938c}
+html[data-theme="dark"] .lesson-practice-page :where(button,select):focus-visible,
+html[data-theme="dark"] .next-lesson-card:focus-visible{outline-width:2px;outline-color:#557f68;outline-offset:2px}
 
 @media(max-width:780px){.account-pill{width:38px;max-width:38px;height:38px;padding:2px}.account-trigger{width:32px;height:32px;padding:0}.account-trigger-avatar{width:32px;height:32px;flex-basis:32px}.account-trigger-name,.account-quick-logout{display:none}.account-pill-loading{width:38px}.account-pill-loading>span:last-child{display:none}}
