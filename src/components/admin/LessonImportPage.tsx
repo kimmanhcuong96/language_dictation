@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth, type AdminImportBatch, type AdminImportBatchItem } from "../../auth";
 import { adminImportStatus, adminImportT, translateAdminImportError, type AdminImportMessageKey } from "../../adminImportI18n";
 import { NON_AI_IMPORT_LIMITS } from "../../lib/nonAiImport";
+import { normalizeOptionalLevel } from "../../lib/importMetadata";
 import { readAudioDuration } from "../../lib/media";
 import { ENABLED_TRANSLATION_IMPORT_LANGUAGES as TRANSLATION_IMPORT_LANGUAGES, parseTranslationText } from "../../lib/translationImport";
 import { translationImportT } from "../../translationImportI18n";
@@ -75,6 +76,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
       .then(result => {
         setBatch(result.batch);
         setSectionId(result.batch.section_id);
+        setLevel(result.batch.level ?? "");
       })
       .catch(() => localStorage.removeItem(LAST_BATCH_KEY));
   }, [auth.user?.isAdmin]);
@@ -100,10 +102,10 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
     try {
       const durationEntries = inputMethod === "files" ? await durationEntriesForFiles(files) : await durationEntriesForZip(archive);
       const form = new FormData();
-      form.set("sectionId", sectionId); form.set("level", level); form.set("inputMethod", inputMethod); form.set("durations", JSON.stringify(durationEntries));
+      form.set("sectionId", sectionId); form.set("level", normalizeOptionalLevel(level)); form.set("inputMethod", inputMethod); form.set("durations", JSON.stringify(durationEntries));
       if (inputMethod === "files") for (const file of files) form.append("files", file); else if (archive) form.set("archive", archive);
       const result = await auth.adminValidateImportBatch(form);
-      setBatch(result.batch); localStorage.setItem(LAST_BATCH_KEY, result.batch.id);
+      setBatch(result.batch); setLevel(result.batch.level ?? ""); localStorage.setItem(LAST_BATCH_KEY, result.batch.id);
     } catch (reason) { setError(toImportError(reason, "batchValidationFailed")); }
     finally { setBusy(false); }
   };
@@ -169,13 +171,13 @@ function AdminShell({ onHome, locale, children }: { onHome: () => void; locale: 
 }
 
 function SectionAndLevel({ sections, sectionId, level, onSection, onLevel, locale }: { sections: SectionOption[]; sectionId: string; level: string; onSection: (value: string) => void; onLevel: (value: string) => void; locale: UiLocale }) {
-  return <div className="admin-import-placement"><label>{adminImportT(locale, "targetSection")}<select required value={sectionId} onChange={event => onSection(event.target.value)}>{sections.map(item => <option key={item.section_id} value={item.section_id}>{item.language_code.toUpperCase()} / {item.category_name} / {item.section_title}</option>)}</select></label><label>{adminImportT(locale, "level")}<input maxLength={30} value={level} onChange={event => onLevel(event.target.value)} /></label></div>;
+  return <div className="admin-import-placement"><label>{adminImportT(locale, "targetSection")}<select required value={sectionId} onChange={event => onSection(event.target.value)}>{sections.map(item => <option key={item.section_id} value={item.section_id}>{item.language_code.toUpperCase()} / {item.category_name} / {item.section_title}</option>)}</select></label><label>{adminImportT(locale, "level")}<select value={level} onChange={event => onLevel(event.target.value)}><option value="">—</option>{["A1","A2","B1","B2","C1","C2"].map(item=><option key={item} value={item}>{item}</option>)}</select></label></div>;
 }
 
 function BatchPreview({ batch, busy, onConfirm, onRetry, onReset, locale }: { batch: AdminImportBatch; busy: boolean; onConfirm: () => void; onRetry: () => void; onReset: () => void; locale: UiLocale }) {
   const t = (key: AdminImportMessageKey, values?: Record<string, string | number>) => adminImportT(locale, key, values);
   const progress = batch.counts.total ? Math.round((batch.counts.completed + batch.counts.failed + batch.counts.invalid) / batch.counts.total * 100) : 0;
-  return <div className="batch-preview"><header><div><span className="overline">{t("batchValidation")}</span><h2>{batch.language_name} / {batch.category_name} / {batch.section_title}</h2></div><button type="button" onClick={onReset}><X size={16} />{t("newBatch")}</button></header><div className="batch-summary"><span>{t("total")} <b>{batch.counts.total}</b></span><span>{t("valid")} <b>{batch.counts.valid}</b></span><span>{t("invalid")} <b>{batch.counts.invalid}</b></span><span>{t("completed")} <b>{batch.counts.completed}</b></span><span>{t("processingStatus")} <b>{batch.counts.processing}</b></span><span>{t("failed")} <b>{batch.counts.failed}</b></span><span>{t("remaining")} <b>{batch.counts.queued}</b></span></div><div className="batch-progress"><i style={{ width: `${progress}%` }} /></div><div className="batch-items">{batch.items.map(item => <BatchItem key={item.id} item={item} locale={locale} />)}</div><div className="batch-actions">{!batch.confirmed_at && <button className="primary-button" disabled={busy || batch.counts.valid === 0} onClick={onConfirm}><Upload size={16} />{busy ? t("importing") : t("confirmImport", { count: batch.counts.valid })}</button>}{batch.confirmed_at && (batch.counts.queued > 0 || batch.counts.processing > 0) && <button className="primary-button" disabled={busy} onClick={onConfirm}>{busy ? t("processing") : t("resumeImport")}</button>}{batch.counts.failed > 0 && <button disabled={busy} onClick={onRetry}><RotateCcw size={16} />{t("retryFailed")}</button>}</div></div>;
+  return <div className="batch-preview"><header><div><span className="overline">{t("batchValidation")}</span><h2>{batch.language_name} / {batch.category_name} / {batch.section_title}</h2><small>{t("level")}: <b>{batch.level ?? "—"}</b></small></div><button type="button" onClick={onReset}><X size={16} />{t("newBatch")}</button></header><div className="batch-summary"><span>{t("total")} <b>{batch.counts.total}</b></span><span>{t("valid")} <b>{batch.counts.valid}</b></span><span>{t("invalid")} <b>{batch.counts.invalid}</b></span><span>{t("completed")} <b>{batch.counts.completed}</b></span><span>{t("processingStatus")} <b>{batch.counts.processing}</b></span><span>{t("failed")} <b>{batch.counts.failed}</b></span><span>{t("remaining")} <b>{batch.counts.queued}</b></span></div><div className="batch-progress"><i style={{ width: `${progress}%` }} /></div><div className="batch-items">{batch.items.map(item => <BatchItem key={item.id} item={item} locale={locale} />)}</div><div className="batch-actions">{!batch.confirmed_at && <button className="primary-button" disabled={busy || batch.counts.valid === 0} onClick={onConfirm}><Upload size={16} />{busy ? t("importing") : t("confirmImport", { count: batch.counts.valid })}</button>}{batch.confirmed_at && (batch.counts.queued > 0 || batch.counts.processing > 0) && <button className="primary-button" disabled={busy} onClick={onConfirm}>{busy ? t("processing") : t("resumeImport")}</button>}{batch.counts.failed > 0 && <button disabled={busy} onClick={onRetry}><RotateCcw size={16} />{t("retryFailed")}</button>}</div></div>;
 }
 
 function BatchItem({ item, locale }: { item: AdminImportBatchItem; locale: UiLocale }) {

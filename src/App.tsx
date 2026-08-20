@@ -20,12 +20,14 @@ import {
   LogOut,
   Medal,
   Menu,
+  Moon,
   Pause,
   Play,
   RotateCcw,
   Search,
   Settings,
   Sparkles,
+  Sun,
   Trophy,
   UserRound,
   Volume2,
@@ -46,6 +48,8 @@ import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import { migrateLegacyHashRoute, navigateToPath, resolveAppView, viewPath, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
 import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
+import { useTheme } from "./theme";
+import { adminSystemT } from "./adminSystemI18n";
 
 type View = AppView;
 const getInitialView = (): View => resolveAppView(window.location.pathname, window.location.hash);
@@ -162,6 +166,12 @@ function LocaleSelect({ locale, onLocale, dark = false }: { locale: UiLocale; on
   </div>;
 }
 
+function ThemeToggle({ locale }: { locale: UiLocale }) {
+  const { theme, toggleTheme } = useTheme();
+  const label = adminSystemT(locale, theme === "light" ? "darkTheme" : "lightTheme");
+  return <button type="button" className="theme-toggle" title={label} aria-label={label} aria-pressed={theme === "dark"} onClick={toggleTheme}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button>;
+}
+
 function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; onChoose: (language: TargetLanguage) => void }) {
   const t = getT(locale);
   const [englishCategoryCount,setEnglishCategoryCount]=useState<number|null>(null);
@@ -173,7 +183,7 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
     ja: { en: "アメリカ英語とイギリス英語の物語・会話", zh: "日常で使える語彙と標準中国語", ja: "短い物語で学ぶ自然な東京の日本語" },
   };
   return <div className="language-home">
-    <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
+    <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
     <main className="landing-main">
       <div className="landing-badge"><Headphones size={16} /> {t("landingBadge")}</div>
       <h1>{t("chooseTitle")}</h1>
@@ -211,6 +221,7 @@ function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { l
     </div>
     <div className="landing-actions">
       <LeaderboardLauncher locale={locale} />
+      <ThemeToggle locale={locale}/>
       <LocaleSelect locale={locale} onLocale={onLocale} />
       <AccountMenu locale={locale} />
     </div>
@@ -252,6 +263,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
           <kbd>⌘ K</kbd>
         </div>
         <div className="header-actions">
+          <ThemeToggle locale={locale}/>
           <LocaleSelect locale={locale} onLocale={onLocale} />
           <button className="streak-pill"><Flame size={17} fill="currentColor" /> <b>7</b></button>
           <AccountMenu locale={locale} />
@@ -456,7 +468,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
         <button className="back-link" onClick={onBack}><ArrowLeft size={18} /> {t("backLibrary")}</button>
         <div className="practice-title"><span>{lesson.emoji}</span><div><b>{lesson.number}. {lesson.title}</b><small><span className={`level-dot ${levelClass[lesson.level]}`} />{lesson.level} · {t("voice")} {lesson.accent}</small></div></div>
         <div className="header-progress"><span><b>{lessonDone}</b> / {lesson.sentences.length} {t("sentences")}</span><div><i style={{ width: `${percent}%` }} /></div></div>
-        <div className="practice-user-actions"><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div>
+        <div className="practice-user-actions"><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div>
       </header>
 
       <main className="practice-main">
@@ -483,7 +495,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
             {!checked ? (
               <textarea id="answer" lang={lesson.language} value={typed} onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (checked) next(); else check(); } }} placeholder={t("typePlaceholder")} autoFocus />
             ) : (
-              <div className="word-result">{evaluation.tokens.map((item, i) => <span key={`${item.text}-${i}`} className={item.status}>{item.status === "hidden" ? "*****" : item.text}</span>)}</div>
+              <div className="word-result original-sentence-result">{evaluation.displayTokens.map((item, i) => <span key={`${item.text}-${i}`} className={item.status}>{item.status === "hidden" ? item.text.replace(/[^\s]+/gu, "*****") : item.text}</span>)}</div>
             )}
             <div className="answer-footer">
               {!checked ? <span><Keyboard size={16} /> {t("caseHint")}</span> : <div className="score-message"><span className="score-icon">{score >= 80 ? <Check size={18} /> : <RotateCcw size={17} />}</span><div><b>{score >= 80 ? t("excellent") : t("almost")} <em>{score}%</em></b><small>{score >= 80 ? t("correctMessage") : t("retryMessage")}</small></div></div>}

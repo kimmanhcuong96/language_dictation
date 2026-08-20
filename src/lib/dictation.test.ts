@@ -25,4 +25,10 @@ describe("dictation engine", () => {
   ])("normalizes numeric form in %s", (expected, actual) => expect(evaluateAnswer({ expected, actual }).correct).toBe(true));
   it("does not mutate the supplied text", () => { const input = "  I'M ready!  "; getNormalizer("en").normalize(input); expect(input).toBe("  I'M ready!  "); });
   it("keeps internal canonical markers out of feedback", () => expect(evaluateAnswer({ expected:"I am first", actual:"you are second" }).tokens.map(token => token.text)).toEqual(["i am", "first"]));
+  it("keeps original casing and punctuation in display feedback", () => expect(evaluateAnswer({ expected:'"I don\u2019t know, Jane."', actual:"you do" }).displayTokens.map(token => token.text).join("")).toBe('"I don\u2019t know, Jane."'));
+  it("maps comparison statuses onto original contracted and numeric phrases", () => {
+    const result = evaluateAnswer({ expected:"I have twenty first-century plans.", actual:"I've 21st century" });
+    expect(result.displayTokens.map(token => token.text).join("")).toBe("I have twenty first-century plans.");
+    expect(result.displayTokens.at(-1)?.status).toBe("incorrect");
+  });
 });

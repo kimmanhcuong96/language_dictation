@@ -3,7 +3,7 @@ import { displayEnglishComparisonToken, normalizeEnglishForComparison } from "./
 
 export type TokenStatus = "correct" | "near-correct" | "incorrect" | "hidden";
 export interface DictationToken { text: string; typed?: string; status: TokenStatus; }
-export interface DictationResult { correct: boolean; tokens: DictationToken[]; firstIncorrectIndex: number | null; }
+export interface DictationResult { correct: boolean; tokens: DictationToken[]; displayTokens: DictationToken[]; firstIncorrectIndex: number | null; }
 
 export interface DictationNormalizer { normalize(text: string): string; tokenize(text: string): string[]; }
 
@@ -35,6 +35,41 @@ export const isNearCorrect = (actual: string, expected: string) => {
   return distance > 0 && distance <= Math.max(1, Math.floor(expected.length * 0.25));
 };
 
+function displayStatus(tokens: DictationToken[]): TokenStatus {
+  if (tokens.some(token => token.status === "incorrect")) return "incorrect";
+  if (tokens.some(token => token.status === "near-correct")) return "near-correct";
+  if (tokens.some(token => token.status === "hidden")) return "hidden";
+  return "correct";
+}
+
+function buildDisplayTokens(expected: string, comparisonTokens: DictationToken[], normalizer: DictationNormalizer): DictationToken[] {
+  const words = [...expected.matchAll(/[\p{L}\p{N}'\u02bc\u2018\u2019]+/gu)].map(match => ({ index: match.index, end: match.index + match[0].length }));
+  if (!words.length) return expected ? [{ text: expected, status: comparisonTokens[0]?.status ?? "correct" }] : [];
+
+  const expectedComparison = normalizer.tokenize(expected);
+  const displayTokens: DictationToken[] = [];
+  let wordIndex = 0, comparisonIndex = 0;
+  while (wordIndex < words.length) {
+    let matchedWordEnd = wordIndex + 1, matchedComparisonLength = 0;
+    for (let wordEnd = wordIndex + 1; wordEnd <= words.length; wordEnd += 1) {
+      const candidate = normalizer.tokenize(expected.slice(words[wordIndex].index, words[wordEnd - 1].end));
+      if (candidate.length && candidate.every((token, offset) => token === expectedComparison[comparisonIndex + offset])) {
+        matchedWordEnd = wordEnd;
+        matchedComparisonLength = candidate.length;
+        break;
+      }
+    }
+    if (!matchedComparisonLength) matchedComparisonLength = Math.min(1, comparisonTokens.length - comparisonIndex);
+    const textStart = wordIndex === 0 ? 0 : words[wordIndex].index;
+    const textEnd = matchedWordEnd < words.length ? words[matchedWordEnd].index : expected.length;
+    const sourceTokens = comparisonTokens.slice(comparisonIndex, comparisonIndex + matchedComparisonLength);
+    displayTokens.push({ text: expected.slice(textStart, textEnd), status: displayStatus(sourceTokens) });
+    wordIndex = matchedWordEnd;
+    comparisonIndex += matchedComparisonLength;
+  }
+  return displayTokens;
+}
+
 export function evaluateAnswer({ expected, actual, language = "en" }: { expected: string; actual: string; language?: TargetLanguage }): DictationResult {
   const normalizer = getNormalizer(language), expectedTokens = normalizer.tokenize(expected), actualTokens = normalizer.tokenize(actual);
   let firstIncorrectIndex: number | null = null;
@@ -45,5 +80,5 @@ export function evaluateAnswer({ expected, actual, language = "en" }: { expected
     const visibleStatus: TokenStatus = firstIncorrectIndex !== null && index > firstIncorrectIndex ? "hidden" : status;
     return { text:language === "en" ? displayEnglishComparisonToken(comparisonText) : comparisonText, typed, status: visibleStatus };
   });
-  return { correct: firstIncorrectIndex === null && actualTokens.length === expectedTokens.length, tokens, firstIncorrectIndex };
+  return { correct: firstIncorrectIndex === null && actualTokens.length === expectedTokens.length, tokens, displayTokens: buildDisplayTokens(expected, tokens, normalizer), firstIncorrectIndex };
 }
