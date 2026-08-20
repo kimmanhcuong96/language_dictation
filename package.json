@@ -9,8 +9,10 @@
     "build": "tsc -b && tsc -p tsconfig.worker.json && vite build",
     "cf:types": "wrangler types",
     "cf:dev": "pnpm build && wrangler dev",
+    "cf:deploy": "pnpm db:migrate && pnpm build && wrangler deploy",
     "cf:deploy:dry": "pnpm build && wrangler deploy --dry-run",
     "db:migrate": "node scripts/migrate-neon.mjs",
+    "test:migrations": "node scripts/test-migrations.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

@@ -5,16 +5,18 @@ import { useAuth, type AdminImportBatch, type AdminImportBatchItem } from "../..
 import { adminImportStatus, adminImportT, translateAdminImportError, type AdminImportMessageKey } from "../../adminImportI18n";
 import { NON_AI_IMPORT_LIMITS } from "../../lib/nonAiImport";
 import { readAudioDuration } from "../../lib/media";
-import { parseTranslationText, TRANSLATION_IMPORT_LANGUAGES } from "../../lib/translationImport";
+import { ENABLED_TRANSLATION_IMPORT_LANGUAGES as TRANSLATION_IMPORT_LANGUAGES, parseTranslationText } from "../../lib/translationImport";
 import { translationImportT } from "../../translationImportI18n";
 import type { UiLocale } from "../../types";
 import { AdminLayout } from "./AdminLayout";
+import { SingleLessonImportForm } from "./SingleLessonImportForm";
+import { youtubeImportT } from "../../youtubeImportI18n";
 
 interface SectionOption { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string }
 interface CategoryOption { category_id: string; category_name: string; language_code: string }
 interface ImportError { value: string; fallback: AdminImportMessageKey }
 type InputMethod = "files" | "zip";
-type PageMode = "package" | "translations";
+type PageMode = "single" | "package" | "translations";
 interface LessonOption { id:string; title:string; sentence_count:number }
 interface TranslationEntry { id:string; languageCode:string; file?:File; lineCount?:number; error?:"blank"|"count"|"utf8"; line?:number; actual?:number }
 const LAST_BATCH_KEY = "me2listen-admin-last-import-batch";
@@ -31,7 +33,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
   const [sections, setSections] = useState<SectionOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [sectionId, setSectionId] = useState("");
-  const [mode,setMode]=useState<PageMode>("package");
+  const [mode,setMode]=useState<PageMode>("single");
   const [lessons,setLessons]=useState<LessonOption[]>([]);
   const [translationLessonId,setTranslationLessonId]=useState("");
   const [translationEntries,setTranslationEntries]=useState<TranslationEntry[]>(()=>[{id:crypto.randomUUID(),languageCode:"vi"}]);
@@ -141,15 +143,17 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
 
   return <AdminShell onHome={onHome} locale={locale}>
     <p><a href="/admin/listening/manage">{t("manageLessons")}</a></p>
-    <div className="import-mode-tabs"><button className={mode==="package"?"active":""} type="button" onClick={()=>setMode("package")}>{translationImportT(locale,"lessonPackage")}</button><button className={mode==="translations"?"active":""} type="button" onClick={()=>setMode("translations")}>{translationImportT(locale,"translationOnly")}</button></div>
+    <div className="import-mode-tabs"><button className={mode==="single"?"active":""} type="button" onClick={()=>setMode("single")}>{youtubeImportT(locale,"singleImport")}</button><button className={mode==="package"?"active":""} type="button" onClick={()=>setMode("package")}>{youtubeImportT(locale,"batchImport")}</button><button className={mode==="translations"?"active":""} type="button" onClick={()=>setMode("translations")}>{translationImportT(locale,"translationOnly")}</button></div>
     {error && <p className="form-error" role="alert">{translateAdminImportError(locale, error.value, error.fallback)}</p>}
-    {sectionNotice && mode==="package" && <p className="form-success" role="status">{t("sectionCreated")}</p>}
+    {sectionNotice && mode!=="translations" && <p className="form-success" role="status">{t("sectionCreated")}</p>}
     {translationNotice&&mode==="translations"&&<p className="form-success" role="status">{translationImportT(locale,"translationImportSuccess")}</p>}
-    {mode==="package"&&!batch && <div className="import-section-creator"><button className="admin-inline-link" type="button" onClick={() => { setShowSectionCreator(current => !current); setSectionNotice(false); const categoryId = sections.find(item => item.section_id === sectionId)?.category_id; if (categoryId) setNewSectionCategoryId(categoryId); }}>{showSectionCreator ? t("cancelCreateSection") : t("createSection")}</button>{showSectionCreator && <form onSubmit={event => { event.preventDefault(); void createSection(); }}><h2>{t("newSection")}</h2><label>{t("category")}<select required value={newSectionCategoryId} onChange={event => setNewSectionCategoryId(event.target.value)}>{categories.map(item => <option key={item.category_id} value={item.category_id}>{item.language_code.toUpperCase()} / {item.category_name}</option>)}</select></label><label>{t("sectionTitle")}<input required maxLength={200} value={newSectionTitle} onChange={event => setNewSectionTitle(event.target.value)} /></label><label>{t("sectionDescription")}<textarea maxLength={1000} value={newSectionDescription} onChange={event => setNewSectionDescription(event.target.value)} /></label><div><button type="button" disabled={busy} onClick={() => setShowSectionCreator(false)}>{t("cancelCreateSection")}</button><button className="primary-button" disabled={busy || !newSectionCategoryId || !newSectionTitle.trim()}>{busy ? t("creatingSection") : t("createSection")}</button></div></form>}</div>}
+    {mode!=="translations"&&!batch && <div className="import-section-creator"><button className="admin-inline-link" type="button" onClick={() => { setShowSectionCreator(current => !current); setSectionNotice(false); const categoryId = sections.find(item => item.section_id === sectionId)?.category_id; if (categoryId) setNewSectionCategoryId(categoryId); }}>{showSectionCreator ? t("cancelCreateSection") : t("createSection")}</button>{showSectionCreator && <form onSubmit={event => { event.preventDefault(); void createSection(); }}><h2>{t("newSection")}</h2><label>{t("category")}<select required value={newSectionCategoryId} onChange={event => setNewSectionCategoryId(event.target.value)}>{categories.map(item => <option key={item.category_id} value={item.category_id}>{item.language_code.toUpperCase()} / {item.category_name}</option>)}</select></label><label>{t("sectionTitle")}<input required maxLength={200} value={newSectionTitle} onChange={event => setNewSectionTitle(event.target.value)} /></label><label>{t("sectionDescription")}<textarea maxLength={1000} value={newSectionDescription} onChange={event => setNewSectionDescription(event.target.value)} /></label><div><button type="button" disabled={busy} onClick={() => setShowSectionCreator(false)}>{t("cancelCreateSection")}</button><button className="primary-button" disabled={busy || !newSectionCategoryId || !newSectionTitle.trim()}>{busy ? t("creatingSection") : t("createSection")}</button></div></form>}</div>}
+    {mode==="single"&&(batch?<BatchPreview locale={locale} batch={batch} busy={busy} onConfirm={() => void runBatch(false)} onRetry={() => void runBatch(true)} onReset={resetBatch}/>:<SingleLessonImportForm locale={locale} sections={sections} initialSectionId={sectionId} onValidated={next=>{setError(undefined);setBatch(next);localStorage.setItem(LAST_BATCH_KEY,next.id);}} onError={reason=>setError(toImportError(reason,"batchValidationFailed"))}/>)}
     {mode==="package"&&<section>
       {batch ? <BatchPreview locale={locale} batch={batch} busy={busy} onConfirm={() => void runBatch(false)} onRetry={() => void runBatch(true)} onReset={resetBatch} /> : <form className="admin-import" onSubmit={event => { event.preventDefault(); void validateBatch(); }}>
         <SectionAndLevel locale={locale} sections={sections} sectionId={sectionId} level={level} onSection={setSectionId} onLevel={setLevel} />
         <p className="selected-section"><b>{t("targetSection")}:</b> {sectionLabel}</p>
+        <p className="selected-section">{youtubeImportT(locale,"batchHint")}</p>
         <label>{t("inputMethod")}<select value={inputMethod} onChange={event => setInputMethod(event.target.value as InputMethod)}><option value="files">{t("directFiles")}</option><option value="zip">{t("zipArchive")}</option></select></label>
         {inputMethod === "files" ? <label>{t("lessonResources")}<input required type="file" multiple accept=".mp3,.srt,.txt,audio/mpeg,application/x-subrip,text/plain" onChange={event => setFiles(Array.from(event.target.files ?? []))} /><small>{t("directFilesHint")}</small></label> : <label>{t("zipArchive")}<input required type="file" accept=".zip,application/zip" onChange={event => setArchive(event.target.files?.[0])} /><small>{t("zipHint")}</small></label>}
         <button className="primary-button" disabled={busy || !sectionId || (inputMethod === "files" ? !files.length : !archive)}>{busy ? t("validating") : t("validatePreview")}</button>
@@ -175,7 +179,8 @@ function BatchPreview({ batch, busy, onConfirm, onRetry, onReset, locale }: { ba
 
 function BatchItem({ item, locale }: { item: AdminImportBatchItem; locale: UiLocale }) {
   const messages = [...(Array.isArray(item.errors) ? item.errors : []), ...(item.errorMessage ? [item.errorMessage] : [])];
-  return <article className={`batch-item status-${item.status.toLocaleLowerCase()}`}><span className="batch-status-icon">{item.status === "COMPLETED" ? <Check size={16} /> : item.status === "INVALID" || item.status === "FAILED" ? <X size={16} /> : item.audioName?.toLocaleLowerCase().endsWith(".zip") ? <FileArchive size={16} /> : <Files size={16} />}</span><div><b>{String(item.sortOrder).padStart(2,"0")}_{item.lessonName}</b><small>{item.audioName ?? adminImportT(locale, "missingMp3")} · {item.srtName ?? adminImportT(locale, "missingSrt")}</small>{Object.keys(item.translationFiles??{}).length>0&&<small>Translations: {Object.keys(item.translationFiles).map(code=>code.toUpperCase()).join(", ")}</small>}{item.slug && <small>{adminImportT(locale, "slug")}: {item.slug} · {adminImportT(locale, "duration")}: {formatDuration(item.durationMs)} · {adminImportT(locale, "segments")}: {item.segmentCount ?? "—"}</small>}{messages.map((message, index) => <em key={`${message}-${index}`}>{translateAdminImportError(locale, message, "itemFailed")}</em>)}</div><strong>{adminImportStatus(locale, item.status)}</strong></article>;
+  const sourceName=item.sourceType==="youtube"?item.linkName:item.audioName,missingSource=item.sourceType==="youtube"?youtubeImportT(locale,"youtubeUrl"):adminImportT(locale,"missingMp3");
+  return <article className={`batch-item status-${item.status.toLocaleLowerCase()}`}><span className="batch-status-icon">{item.status === "COMPLETED" ? <Check size={16} /> : item.status === "INVALID" || item.status === "FAILED" ? <X size={16} /> : item.audioName?.toLocaleLowerCase().endsWith(".zip") ? <FileArchive size={16} /> : <Files size={16} />}</span><div><b>{String(item.sortOrder).padStart(2,"0")}_{item.lessonName}</b><small>{sourceName??missingSource} · {item.srtName ?? adminImportT(locale, "missingSrt")}</small>{Object.keys(item.translationFiles??{}).length>0&&<small>{adminImportT(locale, "translationsLabel")}: {Object.keys(item.translationFiles).map(code=>code.toUpperCase()).join(", ")}</small>}{item.slug && <small>{adminImportT(locale, "slug")}: {item.slug} · {adminImportT(locale, "duration")}: {formatDuration(item.durationMs)} · {adminImportT(locale, "segments")}: {item.segmentCount ?? "—"}</small>}{messages.map((message, index) => <em key={`${message}-${index}`}>{translateAdminImportError(locale, message, "itemFailed")}</em>)}</div><strong>{adminImportStatus(locale, item.status)}</strong></article>;
 }
 
 function toImportError(reason: unknown, fallback: AdminImportMessageKey): ImportError { return { value: reason instanceof Error ? reason.message : "request_failed", fallback }; }

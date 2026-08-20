@@ -3,7 +3,7 @@ import { getTranslationImportLanguage, parsePackageTranslationFilename, parseTra
 
 describe("translation import", () => {
   it("uses the centralized supported language registry", () => {
-    expect(getTranslationImportLanguage("zh")?.name).toBe("Chinese");
+    expect(getTranslationImportLanguage("zh")).toMatchObject({ name: "Chinese", enabled: true });
     expect(getTranslationImportLanguage("fr")).toBeUndefined();
   });
 
@@ -20,5 +20,10 @@ describe("translation import", () => {
   it("requires an exact line count and allows one trailing newline", () => {
     expect(parseTranslationText("Một\nHai\n", 2)).toEqual({ lines: ["Một", "Hai"] });
     expect(parseTranslationText("Một", 2)).toMatchObject({ error: "translation_line_count_mismatch", expected: 2, actual: 1 });
+  });
+
+  it("accepts a UTF-8 BOM but rejects an extra trailing blank line", () => {
+    expect(parseTranslationText("\uFEFFOne\nTwo", 2)).toEqual({ lines: ["One", "Two"] });
+    expect(parseTranslationText("One\nTwo\n\n", 2)).toMatchObject({ error: "translation_blank_line", line: 3 });
   });
 });

@@ -13,6 +13,8 @@ export interface LessonManifestItem {
   sectionTitle: string;
   order: number;
   sentenceCount: number;
+  /** Absent only in a manifest cached before the media-template migration. */
+  templateType?: "audio" | "media";
   updatedAt: string;
 }
 

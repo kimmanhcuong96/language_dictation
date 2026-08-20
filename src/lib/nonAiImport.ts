@@ -15,9 +15,10 @@ export const NON_AI_IMPORT_LIMITS = {
 export interface ImportResourceDescriptor {
   name: string;
   size: number;
-  kind: "audio" | "srt" | "translation" | "unsupported";
+  kind: "audio" | "youtube_link" | "srt" | "translation" | "unsupported";
   translationLanguage?: string;
   translationBasename?: string;
+  lessonBasename?: string;
   error?: string;
 }
 
@@ -27,7 +28,9 @@ export interface ImportPairCandidate {
   slug: string;
   lessonOrder: number;
   sourceFilename: string;
+  sourceType: "audio" | "youtube";
   audioName?: string;
+  linkName?: string;
   srtName?: string;
   translations: Record<string, string>;
   errors: string[];
@@ -50,6 +53,7 @@ export function validateImportCandidateSlugs(
 
 export function describeImportResource(name: string, size: number): ImportResourceDescriptor {
   const fileName = name.replace(/\\/gu, "/").split("/").at(-1) ?? "";
+  if (fileName.endsWith(".link.txt")) return { name, size, kind: "youtube_link", lessonBasename: fileName.slice(0, -".link.txt".length) };
   const rawExtension = fileName.match(/\.([^.]+)$/u)?.[1];
   const extension = rawExtension?.toLocaleLowerCase();
   if (rawExtension !== extension) return { name, size, kind: "unsupported", error: "invalid_lesson_filename" };
@@ -80,23 +84,31 @@ export function normalizeImportBasename(name: string): { key: string; lessonName
 export function pairImportResources(resources: ImportResourceDescriptor[]): ImportPairCandidate[] {
   const pairs = new Map<string, ImportPairCandidate>();
   const unsupported: ImportPairCandidate[] = [];
+  const youtubeBasenames = new Set(resources.filter((resource) => resource.kind === "youtube_link").map((resource) => resource.lessonBasename ?? ""));
   for (const resource of resources) {
     if (resource.kind === "unsupported") {
-      unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, translations: {}, errors: [resource.error ?? "unsupported_file_type"] });
+      unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, sourceType: "audio", translations: {}, errors: [resource.error ?? "unsupported_file_type"] });
       continue;
     }
-    const normalized = normalizeImportBasename(resource.kind === "translation" ? resource.translationBasename ?? "" : resource.name);
+    const basename = resource.kind === "translation" ? resource.translationBasename ?? "" : resource.kind === "youtube_link" ? resource.lessonBasename ?? "" : resource.name.replace(/\\/gu, "/").split("/").at(-1)?.replace(/\.[^.]+$/u, "") ?? "";
+    const normalized = normalizeImportBasename(basename) ?? (youtubeBasenames.has(basename) ? normalizeYouTubeBasename(basename) : null);
     if (!normalized) {
-      unsupported.push({ key: `invalid:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, translations: {}, errors: ["invalid_lesson_filename"] });
+      unsupported.push({ key: `invalid:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, sourceType: "audio", translations: {}, errors: ["invalid_lesson_filename"] });
       continue;
     }
-    const pair = pairs.get(normalized.key) ?? { ...normalized, translations: {}, errors: [] };
+    const pair = pairs.get(normalized.key) ?? { ...normalized, sourceType: "audio" as const, translations: {}, errors: [] };
     if (normalized.lessonName.length > 200) pair.errors.push("lesson_name_too_long");
     if (resource.size <= 0 && resource.kind !== "translation") pair.errors.push(resource.kind === "audio" ? "audio_empty" : "srt_empty");
     if (resource.kind === "audio") {
       if (pair.audioName) pair.errors.push("duplicate_audio_file");
       else pair.audioName = resource.name;
       if (resource.size > NON_AI_IMPORT_LIMITS.maxAudioBytes) pair.errors.push("audio_too_large");
+    } else if (resource.kind === "youtube_link") {
+      pair.sourceType = "youtube";
+      if (pair.linkName) pair.errors.push("duplicate_youtube_link_file");
+      else pair.linkName = resource.name;
+      if (resource.size <= 0) pair.errors.push("youtube_link_empty");
+      if (resource.size > NON_AI_IMPORT_LIMITS.maxTranslationBytes) pair.errors.push("youtube_link_too_large");
     } else if (resource.kind === "srt") {
       if (pair.srtName) pair.errors.push("duplicate_srt_file");
       else pair.srtName = resource.name;
@@ -113,13 +125,23 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
   }
   const candidates = [...pairs.values()];
   for (const candidate of candidates) {
-    if (!candidate.audioName) candidate.errors.push("missing_mp3");
+    if (candidate.sourceType === "youtube") {
+      if (candidate.audioName) candidate.errors.push("conflicting_media_sources");
+      if (!candidate.linkName) candidate.errors.push("missing_youtube_link");
+    } else if (!candidate.audioName) candidate.errors.push("missing_mp3");
     if (!candidate.srtName) candidate.errors.push("missing_srt");
   }
   const orderCounts = new Map<number, number>();
-  for (const candidate of candidates) orderCounts.set(candidate.lessonOrder, (orderCounts.get(candidate.lessonOrder) ?? 0) + 1);
-  for (const candidate of candidates) if ((orderCounts.get(candidate.lessonOrder) ?? 0) > 1) candidate.errors.push(`duplicate_lesson_order:${candidate.lessonOrder}`);
+  for (const candidate of candidates) if (candidate.lessonOrder > 0) orderCounts.set(candidate.lessonOrder, (orderCounts.get(candidate.lessonOrder) ?? 0) + 1);
+  for (const candidate of candidates) if (candidate.lessonOrder > 0 && (orderCounts.get(candidate.lessonOrder) ?? 0) > 1) candidate.errors.push(`duplicate_lesson_order:${candidate.lessonOrder}`);
   return [...candidates, ...unsupported].map((candidate) => ({ ...candidate, errors: [...new Set(candidate.errors)] }));
+}
+
+function normalizeYouTubeBasename(basename: string) {
+  if (!basename || basename === "." || basename === "..") return null;
+  const slug = slugifyTitle(basename);
+  if (!slug) return null;
+  return { key: basename, lessonName: basename, slug, lessonOrder: 0, sourceFilename: `${basename}.link.txt` };
 }
 
 export function parseNonAiSrt(srt: string, audioDurationMs?: number): AlignedSentence[] {

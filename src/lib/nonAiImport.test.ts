@@ -36,6 +36,40 @@ describe("non-AI batch import", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("groups a YouTube link, SRT, and translations as one lesson", () => {
+    const [result] = pairImportResources([
+      describeImportResource("lesson 01.link.txt", 100),
+      describeImportResource("lesson 01.srt", 100),
+      describeImportResource("lesson 01.vi.txt", 100),
+      describeImportResource("lesson 01.zh.txt", 100),
+    ]);
+    expect(result).toMatchObject({
+      key: "lesson 01",
+      lessonName: "lesson 01",
+      sourceType: "youtube",
+      linkName: "lesson 01.link.txt",
+      srtName: "lesson 01.srt",
+      translations: { vi: "lesson 01.vi.txt", zh: "lesson 01.zh.txt" },
+      errors: [],
+    });
+  });
+
+  it("does not treat .link.txt as a translation and requires the matching SRT", () => {
+    expect(describeImportResource("name.link.txt", 100)).toMatchObject({ kind: "youtube_link", lessonBasename: "name" });
+    const [result] = pairImportResources([describeImportResource("name.link.txt", 100)]);
+    expect(result.errors).toContain("missing_srt");
+    expect(result.errors).not.toContain("missing_mp3");
+  });
+
+  it("rejects a group containing both R2 audio and a YouTube link", () => {
+    const [result] = pairImportResources([
+      describeImportResource("01_conflict.mp3", 100),
+      describeImportResource("01_conflict.link.txt", 100),
+      describeImportResource("01_conflict.srt", 100),
+    ]);
+    expect(result.errors).toContain("conflicting_media_sources");
+  });
+
   it("invalidates the package when a translation language is unsupported", () => {
     const result = pairImportResources([
       describeImportResource("01_business.mp3", 100),

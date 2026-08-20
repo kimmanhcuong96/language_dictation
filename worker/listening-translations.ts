@@ -1,6 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { canonicalizeLanguageCode, getLessonApprovalBlockReason, getPopularTranslationLanguage, isValidTranslationText } from "../src/lib/translation";
-import { getTranslationImportLanguage, parseTranslationText } from "../src/lib/translationImport";
+import { ENABLED_TRANSLATION_IMPORT_LANGUAGES, getTranslationImportLanguage, parseTranslationText } from "../src/lib/translationImport";
 
 export interface TranslationSession { id: string; email: string; }
 type NeonSql = ReturnType<typeof neon>;
@@ -84,16 +84,18 @@ async function importLessonTranslations(request:Request,env:Env,session:Translat
   const contentLength=Number(request.headers.get("content-length")??0);if(!Number.isFinite(contentLength)||contentLength<=0)return json({error:"content_length_required"},411);if(contentLength>5*1024*1024)return json({error:"translation_import_too_large"},413);
   let form:FormData;try{form=await request.formData();}catch{return json({error:"invalid_multipart_form"},400);}
   const lessonId=typeof form.get("lessonId")==="string"?validId(String(form.get("lessonId"))):null,languages=form.getAll("languages"),files=form.getAll("files");
-  if(!lessonId||!languages.length||languages.length>4||languages.length!==files.length)return json({error:"invalid_translation_import"},422);
+  if(!lessonId||!languages.length||languages.length>ENABLED_TRANSLATION_IMPORT_LANGUAGES.length||languages.length!==files.length)return json({error:"invalid_translation_import"},422);
   const codes:string[]=[];for(const value of languages){if(typeof value!=="string"||!getTranslationImportLanguage(value))return json({error:`unsupported_translation_language:${String(value)}`},422);codes.push(value.toLocaleLowerCase());}
   if(new Set(codes).size!==codes.length)return json({error:"duplicate_translation_language"},422);
-  if(files.some(file=>!(file instanceof File)||file.size<=0||file.size>1024*1024))return json({error:"invalid_translation_file"},422);
+  if(files.some(file=>!(file instanceof File)))return json({error:"invalid_translation_file"},422);
+  const invalidSizeIndex=files.findIndex(file=>(file as File).size<=0||(file as File).size>1024*1024);
+  if(invalidSizeIndex>=0)return json({error:`${(files[invalidSizeIndex] as File).size<=0?"translation_empty":"translation_too_large"}:${codes[invalidSizeIndex]}`},422);
   const sql=sqlFor(env),lessonRows=await sql`SELECT id,sentence_count FROM listening_lessons WHERE id=${lessonId}`;if(!lessonRows.length)return json({error:"selected_lesson_not_found"},404);
   const sentences=await sql`SELECT id,position FROM listening_sentences WHERE lesson_id=${lessonId} ORDER BY position`,expected=sentences.length;if(!expected||Number(lessonRows[0].sentence_count)!==expected)return json({error:"lesson_sentence_count_invalid"},409);
   const parsedEntries:Array<{code:string;lines:string[];fileName:string}>=[];
   for(let index=0;index<files.length;index++){
     const file=files[index] as File;let text:string;try{text=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(await file.arrayBuffer());}catch{return json({error:`translation_invalid_utf8:${codes[index]}:${file.name}`},422);}
-    const parsed=parseTranslationText(text,expected);if(parsed.error)return json({error:parsed.error,languageCode:codes[index],fileName:file.name,line:parsed.line,expected:parsed.expected,actual:parsed.actual},422);
+    const parsed=parseTranslationText(text,expected);if(parsed.error){const details=parsed.error==="translation_blank_line"?`${parsed.line??""}`:parsed.error==="translation_line_count_mismatch"?`${parsed.actual??""}:${parsed.expected??""}`:"";return json({error:`${parsed.error}:${codes[index]}${details?`:${details}`:""}`},422);}
     parsedEntries.push({code:codes[index],lines:parsed.lines,fileName:file.name});
   }
   const activeRows=await sql`SELECT code FROM listening_translation_languages WHERE code=ANY(${codes}) AND status='ACTIVE'`,active=new Set(activeRows.map(row=>String(row.code)));if(codes.some(code=>!active.has(code)))return json({error:"translation_language_not_active"},422);

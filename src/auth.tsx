@@ -41,8 +41,11 @@ export interface AdminImportBatchItem {
   id: string;
   lessonName: string;
   slug: string | null;
+  sourceType: "audio" | "youtube";
   audioName: string | null;
+  linkName: string | null;
   srtName: string | null;
+  youtubeVideoId: string | null;
   translationFiles: Record<string,string>;
   durationMs: number | null;
   segmentCount: number | null;

@@ -1,18 +1,23 @@
 export const TRANSLATION_IMPORT_LANGUAGES = [
-  { code: "vi", name: "Vietnamese" },
-  { code: "zh", name: "Chinese" },
-  { code: "ja", name: "Japanese" },
-  { code: "ko", name: "Korean" },
+  { code: "vi", name: "Vietnamese", enabled: true },
+  { code: "zh", name: "Chinese", enabled: true },
+  { code: "ja", name: "Japanese", enabled: true },
+  { code: "ko", name: "Korean", enabled: true },
 ] as const;
 
 export type TranslationImportLanguageCode = typeof TRANSLATION_IMPORT_LANGUAGES[number]["code"];
+
+export const ENABLED_TRANSLATION_IMPORT_LANGUAGES = TRANSLATION_IMPORT_LANGUAGES.filter(
+  (language) => language.enabled,
+);
 
 const languageByCode = new Map<string, typeof TRANSLATION_IMPORT_LANGUAGES[number]>(
   TRANSLATION_IMPORT_LANGUAGES.map((language) => [language.code, language]),
 );
 
 export function getTranslationImportLanguage(code: string) {
-  return languageByCode.get(code.toLocaleLowerCase());
+  const language = languageByCode.get(code.toLocaleLowerCase());
+  return language?.enabled ? language : undefined;
 }
 
 export interface ParsedTranslationText {
