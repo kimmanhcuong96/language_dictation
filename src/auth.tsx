@@ -45,6 +45,7 @@ export interface AdminImportBatchItem {
   audioName: string | null;
   linkName: string | null;
   srtName: string | null;
+  namesName: string | null;
   youtubeVideoId: string | null;
   translationFiles: Record<string,string>;
   durationMs: number | null;

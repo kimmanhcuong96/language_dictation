@@ -40,6 +40,7 @@ describe("non-AI batch import", () => {
     const [result] = pairImportResources([
       describeImportResource("lesson 01.link.txt", 100),
       describeImportResource("lesson 01.srt", 100),
+      describeImportResource("lesson 01.name.json", 100),
       describeImportResource("lesson 01.vi.txt", 100),
       describeImportResource("lesson 01.zh.txt", 100),
     ]);
@@ -48,6 +49,7 @@ describe("non-AI batch import", () => {
       lessonName: "lesson 01",
       sourceType: "youtube",
       linkName: "lesson 01.link.txt",
+      namesName: "lesson 01.name.json",
       srtName: "lesson 01.srt",
       translations: { vi: "lesson 01.vi.txt", zh: "lesson 01.zh.txt" },
       errors: [],
@@ -59,6 +61,19 @@ describe("non-AI batch import", () => {
     const [result] = pairImportResources([describeImportResource("name.link.txt", 100)]);
     expect(result.errors).toContain("missing_srt");
     expect(result.errors).not.toContain("missing_mp3");
+  });
+
+  it("recognizes .name.json as optional sentence metadata",()=>{
+    expect(describeImportResource("name.name.json",100)).toMatchObject({kind:"names",lessonBasename:"name"});
+  });
+
+  it("attaches a .name.json file to a numbered audio lesson",()=>{
+    const [result]=pairImportResources([
+      describeImportResource("01_people.mp3",100),
+      describeImportResource("01_people.srt",100),
+      describeImportResource("01_people.name.json",100),
+    ]);
+    expect(result).toMatchObject({sourceType:"audio",namesName:"01_people.name.json",errors:[]});
   });
 
   it("rejects a group containing both R2 audio and a YouTube link", () => {

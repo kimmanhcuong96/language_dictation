@@ -32,6 +32,7 @@ describe("admin import i18n", () => {
     expect(translateAdminImportError("en", "translation_line_count_mismatch:ja:98:100", "requestFailed")).toContain("Found 98 lines; expected 100");
     expect(translateAdminImportError("en", "invalid_translation_filename", "requestFailed")).toContain("language-code");
     expect(translateAdminImportError("en", "invalid_youtube_url", "requestFailed")).toContain("YouTube URL");
+    expect(translateAdminImportError("en", "names_position_invalid:12", "requestFailed")).toContain(".name.json");
     expect(translateAdminImportError("vi", "selected_lesson_not_found", "requestFailed")).not.toContain("selected_lesson_not_found");
   });
 });

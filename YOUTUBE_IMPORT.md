@@ -14,6 +14,31 @@ Migration `0014_lesson_filename_ordering.sql` records every repaired legacy
 order in `listening_lesson_order_migration_audit`. Operators can inspect the
 original order, assigned order, reason, and migration timestamp after rollout.
 
+## Optional proper names
+
+Both Audio and YouTube imports may include `<lesson>.name.json`. `position` is
+the one-based sentence position produced after parsing the SRT, not a physical
+line number in the file.
+
+```json
+{
+  "sentences": [
+    {
+      "position": 1,
+      "names": [
+        "Marie Curie",
+        "John"
+      ]
+    }
+  ]
+}
+```
+
+Each `names` entry is a non-empty string. When the file is present, every
+imported sentence receives an explicit
+`metadata.properNames` array; omitted positions receive an empty array and do
+not fall back to heuristic detection.
+
 YouTube lessons reuse the existing SRT sentence model, translation parser, batch validation, and per-lesson database transaction. The Worker stores only the 11-character YouTube video ID; it never downloads, proxies, or writes YouTube media to R2.
 
 ## Single import

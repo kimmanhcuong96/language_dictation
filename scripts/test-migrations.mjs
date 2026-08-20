@@ -28,6 +28,7 @@ try {
   `;
 
   for (const file of files.filter((file) => file >= "0014_")) await apply(file);
+  await sql`SELECT original_names_name FROM listening_import_batch_items LIMIT 0`;
 
   const lessons = await sql`SELECT id, sort_order, template_type, media_type FROM listening_lessons ORDER BY id`;
   const orders = lessons.map((lesson) => Number(lesson.sort_order));

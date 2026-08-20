@@ -7,6 +7,7 @@ export const NON_AI_IMPORT_LIMITS = {
   maxAudioBytes: 20 * 1024 * 1024,
   maxSrtBytes: 1024 * 1024,
   maxTranslationBytes: 1024 * 1024,
+  maxNamesBytes: 256 * 1024,
   maxArchiveBytes: 40 * 1024 * 1024,
   maxExtractedBytes: 64 * 1024 * 1024,
   maxResources: 250,
@@ -15,7 +16,7 @@ export const NON_AI_IMPORT_LIMITS = {
 export interface ImportResourceDescriptor {
   name: string;
   size: number;
-  kind: "audio" | "youtube_link" | "srt" | "translation" | "unsupported";
+  kind: "audio" | "youtube_link" | "names" | "srt" | "translation" | "unsupported";
   translationLanguage?: string;
   translationBasename?: string;
   lessonBasename?: string;
@@ -31,6 +32,7 @@ export interface ImportPairCandidate {
   sourceType: "audio" | "youtube";
   audioName?: string;
   linkName?: string;
+  namesName?: string;
   srtName?: string;
   translations: Record<string, string>;
   errors: string[];
@@ -54,6 +56,7 @@ export function validateImportCandidateSlugs(
 export function describeImportResource(name: string, size: number): ImportResourceDescriptor {
   const fileName = name.replace(/\\/gu, "/").split("/").at(-1) ?? "";
   if (fileName.endsWith(".link.txt")) return { name, size, kind: "youtube_link", lessonBasename: fileName.slice(0, -".link.txt".length) };
+  if (fileName.endsWith(".name.json")) return { name, size, kind: "names", lessonBasename: fileName.slice(0, -".name.json".length) };
   const rawExtension = fileName.match(/\.([^.]+)$/u)?.[1];
   const extension = rawExtension?.toLocaleLowerCase();
   if (rawExtension !== extension) return { name, size, kind: "unsupported", error: "invalid_lesson_filename" };
@@ -90,7 +93,7 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
       unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, sourceType: "audio", translations: {}, errors: [resource.error ?? "unsupported_file_type"] });
       continue;
     }
-    const basename = resource.kind === "translation" ? resource.translationBasename ?? "" : resource.kind === "youtube_link" ? resource.lessonBasename ?? "" : resource.name.replace(/\\/gu, "/").split("/").at(-1)?.replace(/\.[^.]+$/u, "") ?? "";
+    const basename = resource.kind === "translation" ? resource.translationBasename ?? "" : resource.kind === "youtube_link" || resource.kind === "names" ? resource.lessonBasename ?? "" : resource.name.replace(/\\/gu, "/").split("/").at(-1)?.replace(/\.[^.]+$/u, "") ?? "";
     const normalized = normalizeImportBasename(basename) ?? (youtubeBasenames.has(basename) ? normalizeYouTubeBasename(basename) : null);
     if (!normalized) {
       unsupported.push({ key: `invalid:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, sourceType: "audio", translations: {}, errors: ["invalid_lesson_filename"] });
@@ -98,7 +101,8 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
     }
     const pair = pairs.get(normalized.key) ?? { ...normalized, sourceType: "audio" as const, translations: {}, errors: [] };
     if (normalized.lessonName.length > 200) pair.errors.push("lesson_name_too_long");
-    if (resource.size <= 0 && resource.kind !== "translation") pair.errors.push(resource.kind === "audio" ? "audio_empty" : "srt_empty");
+    if (resource.size <= 0 && resource.kind === "audio") pair.errors.push("audio_empty");
+    if (resource.size <= 0 && resource.kind === "srt") pair.errors.push("srt_empty");
     if (resource.kind === "audio") {
       if (pair.audioName) pair.errors.push("duplicate_audio_file");
       else pair.audioName = resource.name;
@@ -109,6 +113,11 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
       else pair.linkName = resource.name;
       if (resource.size <= 0) pair.errors.push("youtube_link_empty");
       if (resource.size > NON_AI_IMPORT_LIMITS.maxTranslationBytes) pair.errors.push("youtube_link_too_large");
+    } else if (resource.kind === "names") {
+      if (pair.namesName) pair.errors.push("duplicate_names_file");
+      else pair.namesName = resource.name;
+      if (resource.size <= 0) pair.errors.push("names_file_empty");
+      if (resource.size > NON_AI_IMPORT_LIMITS.maxNamesBytes) pair.errors.push("names_file_too_large");
     } else if (resource.kind === "srt") {
       if (pair.srtName) pair.errors.push("duplicate_srt_file");
       else pair.srtName = resource.name;

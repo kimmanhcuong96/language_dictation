@@ -22,6 +22,7 @@ import { buildLessonSections, collectLessonLevels, filterLessonSections } from "
 import { buildTopicSummaries, formatLevelRange } from "./lib/topicCatalog";
 import { findActiveTranscriptIndex, seekAndPlayTranscript } from "./lib/transcriptTracking";
 import { detectLikelyProperNouns } from "./lib/properNouns";
+import { explicitProperNamesFromMetadata } from "./lib/properNamesImport";
 import { navigateToPath, pathHref } from "./router";
 import { sectionT } from "./sectionI18n";
 import { speechRecognitionT } from "./speechRecognitionI18n";
@@ -174,7 +175,8 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
     setSpeechError(null);
     try{recognition.start();setSpeechListening(true);}catch{cancelSpeechRecognition();setSpeechError("unknown");}
   };
-  const sentence=lesson.sentences[index],properNouns=detectLikelyProperNouns(sentence.transcript),lessonState=lessonStates[lesson.id]??{lessonId:lesson.id,starCount:0,isStarred:false,isCompleted:false},evaluation=evaluateAnswer({expected:sentence.transcript,actual:typed,language:"en"}),isDone=completed.has(sentence.id),accepted=isDone||revealed||(submitted&&evaluation.correct),percent=Math.round(completed.size/lesson.sentences.length*100),activeTranscriptIndex=findActiveTranscriptIndex(lesson.sentences,transcriptTimeMs),nextLesson=findNextLesson(manifest,lesson.id);
+  const sentence=lesson.sentences[index],explicitProperNames=explicitProperNamesFromMetadata(sentence.metadata),lessonState=lessonStates[lesson.id]??{lessonId:lesson.id,starCount:0,isStarred:false,isCompleted:false},evaluation=evaluateAnswer({expected:sentence.transcript,actual:typed,language:"en"}),isDone=completed.has(sentence.id),accepted=isDone||revealed||(submitted&&evaluation.correct),percent=Math.round(completed.size/lesson.sentences.length*100),activeTranscriptIndex=findActiveTranscriptIndex(lesson.sentences,transcriptTimeMs),nextLesson=findNextLesson(manifest,lesson.id);
+  const properNouns=explicitProperNames??detectLikelyProperNouns(sentence.transcript);
   const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(false);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length)onLessonState(lesson.id,{isCompleted:true});if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect});}catch{/* local progress remains usable and can be retried */}finally{setSaving(false);}}};
   const submit=()=>{if(!typed.trim())return;setSubmitted(true);if(evaluation.correct)void complete();else setAttempts(value=>value+1);};
   const moveToSentence=(targetIndex:number)=>{if(targetIndex<0||targetIndex>=lesson.sentences.length||targetIndex===index)return;setIndex(targetIndex);};

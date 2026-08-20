@@ -8,6 +8,7 @@ import { resolveObjectRange } from "../src/lib/httpRange";
 import { slugifyTitle } from "../src/lib/slug";
 import { parseTranslationText } from "../src/lib/translationImport";
 import { parseYouTubeLinkText } from "../src/lib/youtube";
+import { parseProperNamesJson } from "../src/lib/properNamesImport";
 import { routeListeningTranslations } from "./listening-translations";
 
 export interface ListeningSession { id: string; email: string; }
@@ -437,6 +438,7 @@ interface PreparedBatchItem {
   audioName: string | null;
   linkName: string | null;
   srtName: string | null;
+  namesName: string | null;
   sourceType: "audio" | "youtube";
   youtubeVideoId: string | null;
   translationFiles: Record<string,string>;
@@ -486,6 +488,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
     const audio = candidate.audioName ? sourceFiles.get(candidate.audioName) : undefined;
     const link = candidate.linkName ? sourceFiles.get(candidate.linkName) : undefined;
     const srt = candidate.srtName ? sourceFiles.get(candidate.srtName) : undefined;
+    const namesFile = candidate.namesName ? sourceFiles.get(candidate.namesName) : undefined;
     let durationMs = candidate.audioName ? durations.get(candidate.audioName) ?? null : null;
     let segmentCount: number | null = null;
     let youtubeVideoId: string | null = null;
@@ -501,6 +504,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
         const sentences = parseNonAiSrt(srtText, durationMs ?? undefined);
         segmentCount = sentences.length;
         durationMs ??= sentences.at(-1)!.endMs;
+        if(namesFile){let namesText:string;try{namesText=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(await namesFile.arrayBuffer());}catch{throw new Error("names_file_invalid_utf8");}parseProperNamesJson(namesText,sentences.length);}
         for (const [languageCode, translationName] of Object.entries(candidate.translations)) {
           const translation = sourceFiles.get(translationName);
           if (!translation) { errors.push(`translation_file_missing:${languageCode}`); continue; }
@@ -517,7 +521,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
   const slugValidatedCandidates = validateImportCandidateSlugs(validated.map((item) => item.candidate), (slug) => existingSlugs.has(slug) || existingPaths.has(lessonPath(level || "all", String(section.category_slug), slug)));
   const prepared: PreparedBatchItem[] = slugValidatedCandidates.map((candidate,index) => ({
     id:crypto.randomUUID(), normalizedBasename:candidate.key, lessonName:candidate.lessonName, slug:candidate.slug || null,
-    audioName:candidate.audioName ?? null, linkName:candidate.linkName ?? null, srtName:candidate.srtName ?? null, sourceType:candidate.sourceType, youtubeVideoId:validated[index].youtubeVideoId, translationFiles:candidate.translations, durationMs:validated[index].durationMs,
+    audioName:candidate.audioName ?? null, linkName:candidate.linkName ?? null, srtName:candidate.srtName ?? null, namesName:candidate.namesName ?? null, sourceType:candidate.sourceType, youtubeVideoId:validated[index].youtubeVideoId, translationFiles:candidate.translations, durationMs:validated[index].durationMs,
     segmentCount:validated[index].segmentCount, sortOrder:candidate.lessonOrder,
     status:candidate.errors.length ? "INVALID" : "QUEUED", errors:candidate.errors,
   }));
@@ -526,7 +530,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
     if(sourceArchiveKey){const archive=source.originalArchive??await createResourceArchive(source.files);await env.LISTENING_AUDIO.put(sourceArchiveKey,archive,{httpMetadata:{contentType:"application/zip",cacheControl:"no-store"}});}
     const queries: TransactionQuery[] = [
       sql`INSERT INTO listening_import_batches(id,created_by,section_id,input_method,source_archive_key,level,status) VALUES(${batchId},${session.id},${sectionId},${inputMethod},${sourceArchiveKey},${level||null},'VALIDATED')`,
-      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,source_type,original_audio_name,original_link_name,original_srt_name,youtube_video_id,translation_files,audio_duration_ms,segment_count,sort_order,status,validation_errors) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.sourceType},${item.audioName},${item.linkName},${item.srtName},${item.youtubeVideoId},${JSON.stringify(item.translationFiles)}::jsonb,${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb)`),
+      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,source_type,original_audio_name,original_link_name,original_srt_name,original_names_name,youtube_video_id,translation_files,audio_duration_ms,segment_count,sort_order,status,validation_errors) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.sourceType},${item.audioName},${item.linkName},${item.srtName},${item.namesName},${item.youtubeVideoId},${JSON.stringify(item.translationFiles)}::jsonb,${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb)`),
     ];
     await sql.transaction(queries);
   } catch (error) {
@@ -584,7 +588,7 @@ async function getImportBatchById(env: Env, session: ListeningSession, batchId: 
   const sql = sqlFor(env);
   const batches = await sql`SELECT b.id,b.input_method,b.level,b.status,b.confirmed_at,b.created_at,l.code AS language_code,l.name AS language_name,c.name AS category_name,s.title AS section_title,s.id AS section_id FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId} AND b.created_by=${session.id}`;
   if (!batches.length) return json({ error:"not_found" },404);
-  const items = await sql`SELECT id,lesson_name AS "lessonName",slug,source_type AS "sourceType",original_audio_name AS "audioName",original_link_name AS "linkName",original_srt_name AS "srtName",youtube_video_id AS "youtubeVideoId",translation_files AS "translationFiles",audio_duration_ms AS "durationMs",segment_count AS "segmentCount",status,validation_errors AS errors,error_message AS "errorMessage",lesson_id AS "lessonId",attempt_count AS "attemptCount",sort_order AS "sortOrder" FROM listening_import_batch_items WHERE batch_id=${batchId} ORDER BY sort_order,id`;
+  const items = await sql`SELECT id,lesson_name AS "lessonName",slug,source_type AS "sourceType",original_audio_name AS "audioName",original_link_name AS "linkName",original_srt_name AS "srtName",original_names_name AS "namesName",youtube_video_id AS "youtubeVideoId",translation_files AS "translationFiles",audio_duration_ms AS "durationMs",segment_count AS "segmentCount",status,validation_errors AS errors,error_message AS "errorMessage",lesson_id AS "lessonId",attempt_count AS "attemptCount",sort_order AS "sortOrder" FROM listening_import_batch_items WHERE batch_id=${batchId} ORDER BY sort_order,id`;
   const counts = { total:items.length, valid:items.filter((item) => item.status !== "INVALID").length, invalid:items.filter((item) => item.status === "INVALID").length, queued:items.filter((item) => item.status === "QUEUED").length, processing:items.filter((item) => item.status === "PROCESSING").length, completed:items.filter((item) => item.status === "COMPLETED").length, failed:items.filter((item) => item.status === "FAILED").length };
   return json({ batch:{ ...batches[0], items, counts } });
 }
@@ -613,11 +617,13 @@ async function processImportBatchItem(env: Env, session: ListeningSession, url: 
     const archiveObject=await env.LISTENING_AUDIO.get(String(batch.source_archive_key));
     if(!archiveObject)throw new Error("staged_resource_missing");
     const archive=unzipSync(new Uint8Array(await archiveObject.arrayBuffer()));
-    const audioName=item.original_audio_name?String(item.original_audio_name):null,linkName=item.original_link_name?String(item.original_link_name):null,srtName=String(item.original_srt_name),audio=audioName?archive[audioName]:undefined,link=linkName?archive[linkName]:undefined,srt=archive[srtName];
+    const audioName=item.original_audio_name?String(item.original_audio_name):null,linkName=item.original_link_name?String(item.original_link_name):null,srtName=String(item.original_srt_name),namesName=item.original_names_name?String(item.original_names_name):null,audio=audioName?archive[audioName]:undefined,link=linkName?archive[linkName]:undefined,srt=archive[srtName],namesBytes=namesName?archive[namesName]:undefined;
     if(!srt||(sourceType==="audio"?!audio:!link))throw new Error("staged_resource_missing");
     const youtubeVideoId=sourceType==="youtube"?parseYouTubeLinkText(new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(link!)):null;
     if(sourceType==="youtube"&&(!youtubeVideoId||youtubeVideoId!==String(item.youtube_video_id)))throw new Error("invalid_youtube_url");
     const sentences=parseNonAiSrt(new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(srt),sourceType==="audio"?Number(item.audio_duration_ms):undefined);
+    let properNames:ReturnType<typeof parseProperNamesJson>|undefined;
+    if(namesName){if(!namesBytes)throw new Error("names_file_missing");let namesText:string;try{namesText=new TextDecoder("utf-8",{fatal:true,ignoreBOM:false}).decode(namesBytes);}catch{throw new Error("names_file_invalid_utf8");}properNames=parseProperNamesJson(namesText,sentences.length);}
     const translations:Record<string,string[]>={},translationFiles=item.translation_files&&typeof item.translation_files==="object"?item.translation_files as Record<string,string>:{};
     for(const [languageCode,fileName] of Object.entries(translationFiles)){
       const bytes=archive[fileName];
@@ -634,7 +640,7 @@ async function processImportBatchItem(env: Env, session: ListeningSession, url: 
       sql`INSERT INTO listening_import_jobs(id,created_by,status,source_audio_key,source_transcript,media_type,youtube_video_id) VALUES(${jobId},${session.id},'VALIDATING',${audioKey},${sentences.map(sentence=>sentence.text).join("\n")},${sourceType==="youtube"?"youtube":"r2_audio"},${youtubeVideoId})`,
       sql`INSERT INTO listening_lessons(id,section_id,slug,title,level,audio_key,duration_ms,sentence_count,metadata,sort_order,source_filename,is_published,import_job_id,template_type,media_type,youtube_video_id) VALUES(${lessonId},${String(batch.section_id)},${slug},${String(item.lesson_name)},${level||null},${audioKey},${Number(item.audio_duration_ms)},${sentences.length},${JSON.stringify({alignmentProvider:"standard-srt",importMode:"srt",sourceFilename})}::jsonb,${Number(item.sort_order)},${sourceFilename},true,${jobId},${sourceType==="youtube"?"media":"audio"},${sourceType==="youtube"?"youtube":"r2_audio"},${youtubeVideoId})`,
       sql`INSERT INTO listening_canonical_paths(path,lesson_id) VALUES(${canonicalPath},${lessonId})`,
-      ...sentenceRecords.map(sentence=>sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${sentence.id},${lessonId},${sentence.position},${sentence.text},${getNormalizer(String(batch.language_code) as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null})}::jsonb)`),
+      ...sentenceRecords.map(sentence=>sql`INSERT INTO listening_sentences(id,lesson_id,position,transcript,normalized_transcript,start_ms,end_ms,metadata) VALUES(${sentence.id},${lessonId},${sentence.position},${sentence.text},${getNormalizer(String(batch.language_code) as "en"|"zh"|"ja").normalize(sentence.text)},${sentence.startMs},${sentence.endMs},${JSON.stringify({confidence:sentence.confidence??null,...(properNames?{properNames:properNames.byPosition.get(sentence.position)??[]}:{})})}::jsonb)`),
     ];
     for(const [translationLanguage,lines] of Object.entries(translations)){
       queries.push(sql`INSERT INTO listening_lesson_translation_sets(lesson_id,language_code,status,requested_by) VALUES(${lessonId},${translationLanguage},'APPROVED',${session.id})`);
