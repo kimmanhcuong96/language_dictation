@@ -17,6 +17,9 @@ export interface TranslationLanguageOption { code:string; name:string; nativeNam
 export interface SentenceTranslation { id:string; sentenceId:string; text:string; source?:"GOOGLE"|"USER"|"ADMIN"; status?:string; updatedAt:string; }
 export interface TranslationReviewItem { id:string; sentenceId:string; languageCode:string; text:string; source:string; status:string; createdAt:string; position:number; transcript:string; lessonId:string; lessonTitle:string; languageName:string; submittedBy:string|null; }
 export interface TranslationSetReview { lessonId:string; lessonTitle:string; languageCode:string; languageName:string; status:string; lessonActive:boolean; languageStatus:string; sentenceCount:number; readySentenceCount:number; rejectedSentenceCount:number; canApproveLesson:boolean; approvalBlockReason:"lesson_inactive"|"language_inactive"|"translation_set_empty"|"translation_set_rejected"|"translation_set_incomplete"|null; }
+export interface SentenceComment { id:string; sentenceId:string; body:string; createdAt:string; isOwner:boolean; author:{displayName:string;avatarUrl:string|null}; }
+export interface SentenceCommentsPage { comments:SentenceComment[]; nextCursor:string|null; }
+export interface ReportedSentenceComment { id:string;body:string;status:"VISIBLE"|"HIDDEN";createdAt:string;authorName:string;reportCount:number;reasons:string[];lessonTitle:string;position:number;transcript:string; }
 
 export interface ActivityEvent {
   eventId: string;
@@ -87,6 +90,10 @@ interface AuthContextValue {
   resetListeningProgress: (input: { lessonId: string; sentenceId: string; position: number }) => Promise<void>;
   resetListeningLessonProgress: (lessonId: string) => Promise<void>;
   setListeningLessonFavorite: (lessonId: string, favorite: boolean) => Promise<{ lessonId: string; starCount: number; isStarred: boolean }>;
+  getSentenceComments: (sentenceId:string,cursor?:string) => Promise<SentenceCommentsPage>;
+  createSentenceComment: (sentenceId:string,body:string) => Promise<SentenceComment>;
+  deleteSentenceComment: (commentId:string) => Promise<void>;
+  reportSentenceComment: (commentId:string,reason:"SPAM"|"HARASSMENT"|"HATE"|"SEXUAL"|"VIOLENCE"|"OTHER",details?:string) => Promise<void>;
   saveListeningPreferences: (preferences: ListeningPreferences) => Promise<ListeningPreferences>;
   adminCreateSection: (input: { categoryId: string; title: string; description?: string }) => Promise<{ section: { section_id: string; category_id: string; category_name: string; section_title: string; language_code: string } }>;
   adminValidateImportBatch: (form: FormData) => Promise<{ batch: AdminImportBatch }>;
@@ -105,6 +112,8 @@ interface AuthContextValue {
   adminReviewTranslation: (translationId:string,action:"approve"|"reject",reason?:string) => Promise<void>;
   adminApproveLessonTranslations: (lessonId:string,languageCode:string) => Promise<void>;
   adminImportTranslations: (form:FormData) => Promise<{lessonId:string;translations:Array<{languageCode:string;lineCount:number}>}>;
+  adminGetReportedComments: () => Promise<{comments:ReportedSentenceComment[]}>;
+  adminModerateComment: (commentId:string,action:"hide"|"restore",reason:string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -238,6 +247,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!csrf) throw new Error("not_authenticated");
       return api(`/api/listening/lessons/${encodeURIComponent(lessonId)}/favorite`, { method: favorite ? "PUT" : "DELETE", headers: { "X-CSRF-Token": csrf } });
     },
+    getSentenceComments: async (sentenceId,cursor) => api(`/api/listening/sentences/${encodeURIComponent(sentenceId)}/comments${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`),
+    createSentenceComment: async (sentenceId,body) => {
+      if(!csrf||!user)throw new Error("not_authenticated");
+      const result=await api<{comment:SentenceComment}>(`/api/listening/sentences/${encodeURIComponent(sentenceId)}/comments`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({id:crypto.randomUUID(),body})});
+      return result.comment;
+    },
+    deleteSentenceComment: async (commentId) => {
+      if(!csrf||!user)throw new Error("not_authenticated");
+      await api(`/api/listening/comments/${encodeURIComponent(commentId)}`,{method:"DELETE",headers:{"X-CSRF-Token":csrf}});
+    },
+    reportSentenceComment: async (commentId,reason,details) => {
+      if(!csrf||!user)throw new Error("not_authenticated");
+      await api(`/api/listening/comments/${encodeURIComponent(commentId)}/reports`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({reason,details})});
+    },
     saveListeningPreferences: async (preferences) => {
       if (!csrf || !user) throw new Error("not_authenticated");
       const result = await api<{ preferences: ListeningPreferences }>("/api/listening-preferences", { method:"PATCH", headers:{ "Content-Type":"application/json", "X-CSRF-Token":csrf }, body:JSON.stringify(preferences) });
@@ -300,6 +323,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     adminImportTranslations: async (form) => {
       if(!csrf||!user?.isAdmin)throw new Error("forbidden");return api("/api/listening/admin/translations/import",{method:"POST",headers:{"X-CSRF-Token":csrf},body:form});
+    },
+    adminGetReportedComments: async () => {
+      if(!user?.isAdmin)throw new Error("forbidden");return api<{comments:ReportedSentenceComment[]}>("/api/listening/admin/comments/reports");
+    },
+    adminModerateComment: async (commentId,action,reason) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/comments/${encodeURIComponent(commentId)}/moderation`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({action,reason})});
     },
   }), [user, loading, csrf, sendActivity]);
 

@@ -9,6 +9,7 @@ import { slugifyTitle } from "../src/lib/slug";
 import { parseTranslationText } from "../src/lib/translationImport";
 import { parseYouTubeLinkText } from "../src/lib/youtube";
 import { parseProperNamesJson } from "../src/lib/properNamesImport";
+import { routeListeningComments } from "./listening-comments";
 import { routeListeningTranslations } from "./listening-translations";
 
 export interface ListeningSession { id: string; email: string; }
@@ -27,6 +28,7 @@ const validId = (value: string | null, max = 100) => value && new RegExp(`^[\\w-
 const isAdmin = (env: Env, session: ListeningSession | null) => !!session && env.ADMIN_EMAILS.split(",").map((item) => item.trim().toLocaleLowerCase()).filter(Boolean).includes(session.email.toLocaleLowerCase());
 
 export async function routeListening(request: Request, env: Env, url: URL, session: ListeningSession | null, mutationValid: boolean): Promise<Response> {
+  const commentResponse=await routeListeningComments(request,env,url,session,mutationValid,isAdmin(env,session));if(commentResponse)return commentResponse;
   const translationResponse=await routeListeningTranslations(request,env,url,session,isAdmin(env,session),mutationValid);if(translationResponse)return translationResponse;
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith("/api/listening/audio/")) return serveAudio(request, env, url);
   if (request.method === "GET" && url.pathname === "/api/listening/categories") return getCategories(env, url);

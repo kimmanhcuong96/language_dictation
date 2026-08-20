@@ -1,0 +1,7 @@
+import type { UiLocale } from "./types";
+const en={title:"Comment moderation",description:"Review reported sentence comments and record every visibility decision.",empty:"No reported comments.",reports:"reports",hide:"Hide",restore:"Restore",reason:"Enter a reason for the audit log:",loadError:"Could not load reported comments.",actionError:"Could not apply the moderation action."} as const;
+type Key=keyof typeof en;type Messages=Record<Key,string>;
+const vi:Messages={title:"Kiểm duyệt bình luận",description:"Xem xét bình luận bị báo cáo và ghi lại mọi quyết định hiển thị.",empty:"Không có bình luận bị báo cáo.",reports:"lượt báo cáo",hide:"Ẩn",restore:"Khôi phục",reason:"Nhập lý do để lưu vào nhật ký kiểm duyệt:",loadError:"Không thể tải bình luận bị báo cáo.",actionError:"Không thể thực hiện thao tác kiểm duyệt."};
+const zh:Messages={title:"评论审核",description:"审核被举报的句子评论，并记录每次可见性决定。",empty:"没有被举报的评论。",reports:"次举报",hide:"隐藏",restore:"恢复",reason:"请输入审核日志原因：",loadError:"无法加载被举报的评论。",actionError:"无法执行审核操作。"};
+const ja:Messages={title:"コメント管理",description:"報告された文コメントを確認し、表示判断を記録します。",empty:"報告されたコメントはありません。",reports:"件の報告",hide:"非表示",restore:"復元",reason:"監査ログに残す理由を入力してください：",loadError:"報告コメントを読み込めませんでした。",actionError:"管理操作を実行できませんでした。"};
+const messages:Record<UiLocale,Messages>={en,vi,zh,ja};export function commentModerationT(locale:UiLocale,key:Key){return messages[locale][key];}

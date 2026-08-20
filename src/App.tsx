@@ -44,6 +44,7 @@ import { evaluateAnswer } from "./lib/dictation";
 import { AudioSegmentPlayer } from "./components/AudioSegmentPlayer";
 import { AdminDashboardPage } from "./components/admin/AdminDashboardPage";
 import { TranslationReviewPage } from "./components/admin/TranslationReviewPage";
+import { CommentModerationPage } from "./components/admin/CommentModerationPage";
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import { migrateLegacyHashRoute, navigateToPath, resolveAppView, viewPath, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
@@ -108,6 +109,8 @@ function App() {
     <LessonManagementPage locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminTranslations" ? (
     <TranslationReviewPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
+  ) : view.page === "adminComments" ? (
+    <CommentModerationPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (

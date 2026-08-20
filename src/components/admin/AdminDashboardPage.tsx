@@ -1,4 +1,5 @@
-import { FileUp, Languages, Library } from "lucide-react";
+import { FileUp, Languages, Library, MessageSquareWarning } from "lucide-react";
+import { commentModerationT } from "../../commentModerationI18n";
 import { adminTranslationT } from "../../adminTranslationI18n";
 import { adminSystemT } from "../../adminSystemI18n";
 import { useAuth } from "../../auth";
@@ -16,6 +17,7 @@ export function AdminDashboardPage({ locale, onSiteHome }: { locale: UiLocale; o
     { path: "/admin/listening", icon: FileUp, title: adminSystemT(locale, "importTitle"), description: adminSystemT(locale, "importDescription") },
     { path: "/admin/listening/manage", icon: Library, title: adminSystemT(locale, "lessonsTitle"), description: adminSystemT(locale, "lessonsDescription") },
     { path: "/admin/listening/translations", icon: Languages, title: adminTranslationT(locale,"title"), description: adminTranslationT(locale,"description") },
+    { path: "/admin/listening/comments", icon: MessageSquareWarning, title: commentModerationT(locale,"title"), description: commentModerationT(locale,"description") },
   ];
 
   return <AdminLayout locale={locale} title={title} dashboard onSiteHome={onSiteHome}>
