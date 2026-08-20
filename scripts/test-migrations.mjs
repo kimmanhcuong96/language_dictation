@@ -35,6 +35,10 @@ try {
   await sql`SELECT id, user_id, source, resource_id, duration_seconds, occurred_at FROM learning_activity_events LIMIT 0`;
   await sql`SELECT study_7_day_limit, study_30_day_limit, translation_7_day_limit, translation_30_day_limit FROM leaderboard_settings WHERE singleton=TRUE`;
   await sql`SELECT id, actor_user_id, previous_settings, next_settings, created_at FROM leaderboard_settings_audit_log LIMIT 0`;
+  const leaderboardIndexes = await sql`SELECT indexdef FROM pg_indexes WHERE schemaname=current_schema() AND indexname='listening_translation_contributions_approved_period_idx'`;
+  if (leaderboardIndexes.length !== 1 || !String(leaderboardIndexes[0].indexdef).includes("approved_at")) {
+    throw new Error("approved translation contribution leaderboard index is missing or invalid");
+  }
 
   const lessons = await sql`SELECT id, sort_order, template_type, media_type FROM listening_lessons ORDER BY id`;
   const orders = lessons.map((lesson) => Number(lesson.sort_order));
