@@ -115,17 +115,18 @@ describe("non-AI batch import", () => {
     expect(result?.errors).toContain("unsupported_translation_language:vietnamese");
   });
 
-  it("rejects duplicate generated slugs within one batch", () => {
+  it("assigns sequential slugs for duplicate generated slugs within one batch", () => {
     const candidates = pairImportResources(["01_One lesson.mp3", "01_One lesson.srt", "02_One--lesson.mp3", "02_One--lesson.srt"].map((name) => describeImportResource(name, 100)));
     const result = validateImportCandidateSlugs(candidates, () => false);
-    expect(result.map((item) => item.slug)).toEqual(["one-lesson", "one-lesson"]);
-    expect(result.every((item) => item.errors.includes("duplicate_slug_in_batch"))).toBe(true);
+    expect(result.map((item) => item.slug)).toEqual(["one-lesson", "one-lesson-1"]);
+    expect(result.every((item) => item.errors.length===0)).toBe(true);
   });
 
-  it("rejects a generated slug already used in the target section", () => {
+  it("assigns the first available suffix when generated slugs are already used", () => {
     const candidates = pairImportResources(["01_One lesson.mp3", "01_One lesson.srt"].map((name) => describeImportResource(name, 100)));
-    const result = validateImportCandidateSlugs(candidates, (slug) => slug === "one-lesson");
-    expect(result[0].errors).toContain("duplicate_lesson_slug");
+    const result = validateImportCandidateSlugs(candidates, (slug) => new Set(["one-lesson","one-lesson-1"]).has(slug));
+    expect(result[0].slug).toBe("one-lesson-2");
+    expect(result[0].errors).toEqual([]);
   });
 
   it("derives understandable lesson names and validates standard SRT", () => {

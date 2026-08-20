@@ -1,5 +1,5 @@
 import { parseSrt, validateAlignedSentences, type AlignedSentence } from "./ingestion";
-import { slugifyTitle } from "./slug";
+import { slugifyTitle, uniqueSlug } from "./slug";
 import { parsePackageTranslationFilename } from "./translationImport";
 
 export const NON_AI_IMPORT_LIMITS = {
@@ -42,14 +42,12 @@ export function validateImportCandidateSlugs(
   candidates: ImportPairCandidate[],
   isUsed: (candidate: string) => boolean,
 ): ImportPairCandidate[] {
-  const counts = new Map<string, number>();
-  for (const candidate of candidates) if (candidate.slug) counts.set(candidate.slug, (counts.get(candidate.slug) ?? 0) + 1);
+  const reserved = new Set<string>();
   return candidates.map((candidate) => {
     if (!candidate.slug || candidate.errors.length) return { ...candidate };
-    const errors = [...candidate.errors];
-    if ((counts.get(candidate.slug) ?? 0) > 1) errors.push("duplicate_slug_in_batch");
-    if (isUsed(candidate.slug)) errors.push("duplicate_lesson_slug");
-    return { ...candidate, errors: [...new Set(errors)] };
+    const slug=uniqueSlug(candidate.slug,value=>reserved.has(value)||isUsed(value));
+    reserved.add(slug);
+    return { ...candidate, slug };
   });
 }
 

@@ -444,6 +444,7 @@ interface PreparedBatchItem {
   normalizedBasename: string;
   lessonName: string;
   slug: string | null;
+  baseSlug: string | null;
   audioName: string | null;
   linkName: string | null;
   srtName: string | null;
@@ -540,6 +541,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
   const slugValidatedCandidates = validateImportCandidateSlugs(validated.map((item) => item.candidate), (slug) => existingSlugs.has(slug) || existingPaths.has(lessonPath(level || "all", String(section.category_slug), slug)));
   const prepared: PreparedBatchItem[] = slugValidatedCandidates.map((candidate,index) => ({
     id:crypto.randomUUID(), normalizedBasename:candidate.key, lessonName:candidate.lessonName, slug:candidate.slug || null,
+    baseSlug:validated[index].candidate.slug || null,
     audioName:candidate.audioName ?? null, linkName:candidate.linkName ?? null, srtName:candidate.srtName ?? null, namesName:candidate.namesName ?? null, sourceType:candidate.sourceType, youtubeVideoId:validated[index].youtubeVideoId, translationFiles:candidate.translations, durationMs:validated[index].durationMs,
     segmentCount:validated[index].segmentCount, sortOrder:candidate.lessonOrder,
     status:candidate.errors.length ? "INVALID" : "QUEUED", errors:candidate.errors,
@@ -554,7 +556,7 @@ async function validateImportBatch(request: Request, env: Env, session: Listenin
     }
     const queries: TransactionQuery[] = [
       sql`INSERT INTO listening_import_batches(id,created_by,section_id,input_method,source_archive_key,level,status) VALUES(${batchId},${session.id},${sectionId},${inputMethod},NULL,${level||null},'VALIDATED')`,
-      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,source_type,original_audio_name,original_link_name,original_srt_name,original_names_name,youtube_video_id,translation_files,audio_duration_ms,segment_count,sort_order,status,validation_errors,staged_resource_key) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.sourceType},${item.audioName},${item.linkName},${item.srtName},${item.namesName},${item.youtubeVideoId},${JSON.stringify(item.translationFiles)}::jsonb,${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb,${stagedKeys.get(item.id)??null})`),
+      ...prepared.map((item) => sql`INSERT INTO listening_import_batch_items(id,batch_id,normalized_basename,lesson_name,slug,base_slug,source_type,original_audio_name,original_link_name,original_srt_name,original_names_name,youtube_video_id,translation_files,audio_duration_ms,segment_count,sort_order,status,validation_errors,staged_resource_key) VALUES(${item.id},${batchId},${item.normalizedBasename},${item.lessonName},${item.slug},${item.baseSlug},${item.sourceType},${item.audioName},${item.linkName},${item.srtName},${item.namesName},${item.youtubeVideoId},${JSON.stringify(item.translationFiles)}::jsonb,${item.durationMs},${item.segmentCount},${item.sortOrder},${item.status},${JSON.stringify(item.errors)}::jsonb,${stagedKeys.get(item.id)??null})`),
     ];
     await sql.transaction(queries);
   } catch (error) {
@@ -680,6 +682,11 @@ export async function processLessonImportQueueMessage(env:Env,message:LessonImpo
     const batchRows=await sql`SELECT b.level,b.section_id,b.source_archive_key,c.slug AS category_slug,l.code AS language_code FROM listening_import_batches b JOIN listening_sections s ON s.id=b.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages l ON l.id=c.language_id WHERE b.id=${batchId}`;
     const batch=batchRows[0],sourceType=String(item.source_type)==="youtube"?"youtube":"audio";
     if(!batch)throw new Error("invalid_section");
+    const level=String(batch.level??""),canonicalPrefix=lessonPath(level||"all",String(batch.category_slug),"reserved-slug").replace(/reserved-slug$/u,"");
+    const slugRows=await sql`SELECT reserve_listening_import_slug(${itemId},${String(batch.section_id)},${String(item.base_slug??item.slug)},${canonicalPrefix}) AS slug`;
+    const reservedSlug=String(slugRows[0]?.slug??"");
+    if(!reservedSlug)throw new Error("slug_space_exhausted");
+    if(reservedSlug!==String(item.slug)){await sql`UPDATE listening_import_batch_items SET slug=${reservedSlug},updated_at=now() WHERE id=${itemId} AND job_token=${jobToken}`;item.slug=reservedSlug;}
     audioKey=sourceType==="audio"?`listening/${String(batch.language_code)}/lessons/${itemId}/audio.mp3`:null;
     const stagedResourceKey=String(item.staged_resource_key??batch.source_archive_key??"");
     const archiveObject=stagedResourceKey?await env.LISTENING_AUDIO.get(stagedResourceKey):null;
@@ -703,7 +710,7 @@ export async function processLessonImportQueueMessage(env:Env,message:LessonImpo
       translations[languageCode]=parsed.lines;
     }
     if(!await renewImportLease(sql,itemId,jobToken,deliveryId))throw new Error("processing_lease_lost");
-    const lessonId=itemId,jobId=crypto.randomUUID(),slug=String(item.slug),level=String(batch.level??""),canonicalPath=lessonPath(level||"all",String(batch.category_slug),slug),sourceName=sourceType==="audio"?audioName!:linkName!,sourceFilename=sourceName.replace(/\\/gu,"/").split("/").at(-1)??sourceName,sentenceRecords=sentences.map(sentence=>({id:crypto.randomUUID(),...sentence}));
+    const lessonId=itemId,jobId=crypto.randomUUID(),slug=String(item.slug),canonicalPath=lessonPath(level||"all",String(batch.category_slug),slug),sourceName=sourceType==="audio"?audioName!:linkName!,sourceFilename=sourceName.replace(/\\/gu,"/").split("/").at(-1)??sourceName,sentenceRecords=sentences.map(sentence=>({id:crypto.randomUUID(),...sentence}));
     if(audioKey){await env.LISTENING_AUDIO.put(audioKey,new Blob([audio!],{type:"audio/mpeg"}),{httpMetadata:{contentType:"audio/mpeg",cacheControl:"public, max-age=86400"}});audioUploaded=true;}
     const queries:TransactionQuery[]=[
       sql`SELECT pg_advisory_xact_lock(hashtext(${itemId}))`,
@@ -720,6 +727,7 @@ export async function processLessonImportQueueMessage(env:Env,message:LessonImpo
     }
     queries.push(sql`UPDATE listening_import_jobs SET lesson_id=${lessonId},status='PUBLISHED',updated_at=now() WHERE id=${jobId}`);
     queries.push(sql`UPDATE listening_import_batch_items SET status='COMPLETED',lesson_id=${lessonId},error_message=NULL,processing_delivery_id=NULL,processing_started_at=NULL,updated_at=now() WHERE id=${itemId} AND job_token=${jobToken} AND processing_delivery_id=${deliveryId}`);
+    queries.push(sql`DELETE FROM listening_import_slug_reservations WHERE item_id=${itemId}`);
     queries.push(sql`UPDATE listening_manifest_meta SET version=version+1,updated_at=now() WHERE id=true`);
     queries.push(batchStatusQuery(sql,batchId));
     await sql.transaction(queries);

@@ -39,6 +39,15 @@ try {
   if (leaderboardIndexes.length !== 1 || !String(leaderboardIndexes[0].indexdef).includes("approved_at")) {
     throw new Error("approved translation contribution leaderboard index is missing or invalid");
   }
+  await sql`INSERT INTO users(id,google_subject,email,display_name,created_at,updated_at) VALUES('migration-leaderboard-admin','migration-leaderboard-admin','migration-leaderboard-admin@example.test','Migration Admin',0,0)`;
+  await sql`UPDATE leaderboard_settings SET study_7_day_limit=37,updated_by='migration-leaderboard-admin' WHERE singleton=TRUE`;
+  const leaderboardAudits = await sql`SELECT actor_user_id,previous_settings,next_settings FROM leaderboard_settings_audit_log ORDER BY created_at DESC LIMIT 1`;
+  if (leaderboardAudits.length !== 1
+    || leaderboardAudits[0].actor_user_id !== "migration-leaderboard-admin"
+    || Number(leaderboardAudits[0].previous_settings.study7DayLimit) !== 50
+    || Number(leaderboardAudits[0].next_settings.study7DayLimit) !== 37) {
+    throw new Error(`leaderboard settings audit trigger failed: ${JSON.stringify(leaderboardAudits)}`);
+  }
 
   const lessons = await sql`SELECT id, sort_order, template_type, media_type FROM listening_lessons ORDER BY id`;
   const orders = lessons.map((lesson) => Number(lesson.sort_order));

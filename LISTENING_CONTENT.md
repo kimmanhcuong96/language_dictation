@@ -25,4 +25,6 @@ Lesson packages support direct files or ZIP archives:
 
 The strict `NN_` prefix (`01`–`99`) supplies the Section-scoped lesson order. The SRT supplies all source sentences and timing. Translation files are UTF-8 TXT with exactly one non-empty physical line per SRT cue. A package without translations remains valid. Validation covers the complete input, then valid lessons are imported independently so invalid or failed items do not block the remainder.
 
+Generated slugs are never overwritten. If a slug is already used, import assigns the first available URL-safe suffix (`lesson`, `lesson-1`, `lesson-2`, and so on). PostgreSQL reservations make this allocation safe when multiple batches or browser tabs import concurrently.
+
 Use the **Translation only** tab to add or replace one or more languages on an existing lesson. In this mode the selected lesson and language are authoritative; the TXT filename is irrelevant. Validation is completed before the atomic database transaction begins.
