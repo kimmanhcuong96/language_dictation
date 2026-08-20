@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS listening_sentence_comments (
   body TEXT NOT NULL CHECK (
     char_length(body) BETWEEN 1 AND 500
     AND body = btrim(body)
-    AND char_length(body) - char_length(replace(body, E'\n', '')) <= 4
-    AND body !~ E'[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]'
+    AND char_length(body) - char_length(replace(body, chr(10), '')) <= 4
+    AND replace(body, chr(10), '') !~ '[[:cntrl:]]'
   ),
   status TEXT NOT NULL DEFAULT 'VISIBLE' CHECK (status IN ('VISIBLE', 'HIDDEN')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -67,6 +67,6 @@ CREATE TRIGGER listening_sentence_comments_immutable
   FOR EACH ROW EXECUTE FUNCTION prevent_sentence_comment_content_update();
 
 COMMENT ON TABLE listening_sentence_comments IS 'Public comments attached to individual listening sentences';
-COMMENT ON COLUMN listening_sentence_comments.status IS 'Moderation visibility; only VISIBLE comments are returned publicly';
+COMMENT ON COLUMN listening_sentence_comments.status IS 'Moderation visibility. Only VISIBLE comments are returned publicly';
 COMMENT ON TABLE listening_sentence_comment_reports IS 'One abuse report per signed-in user and sentence comment';
 COMMENT ON TABLE listening_sentence_comment_moderation_log IS 'Immutable audit trail of administrator comment visibility actions';

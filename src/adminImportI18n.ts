@@ -34,7 +34,7 @@ const en = {
   directFiles: "MP3 + SRT files",
   zipArchive: "ZIP archive",
   lessonResources: "Lesson resources",
-  directFilesHint: "Use matching NN_<lesson-name>.mp3 and NN_<lesson-name>.srt files (01–99), with optional NN_<lesson-name>.<language>.txt translations.",
+  directFilesHint: "Use matching NN_<lesson-name>.mp3 and NN_<lesson-name>.srt files (01–99), with optional translated-language TXT files. Redundant .en.txt files are ignored.",
   zipHint: "Every lesson in the ZIP must use the NN_ prefix. Invalid lessons do not block valid lessons.",
   validatePreview: "Validate and preview",
   validating: "Validating…",
@@ -107,9 +107,10 @@ const ja: Messages = {
 };
 
 export const adminImportMessages: Record<UiLocale, Messages> = { vi, en, zh, ja };
+const sourceFileHints:Record<UiLocale,string>={en:"Use matching NN_<lesson-name>.mp3 and NN_<lesson-name>.srt files (01–99), with optional translated-language TXT files. Redundant .en.txt files are ignored.",vi:"Dùng các cặp NN_<tên-bài>.mp3 và NN_<tên-bài>.srt (01–99), có thể kèm TXT bản dịch. File .en.txt dư thừa sẽ được bỏ qua.",zh:"使用匹配的 NN_<课程名>.mp3 和 NN_<课程名>.srt（01–99），可附加翻译 TXT；多余的 .en.txt 将被忽略。",ja:"一致する NN_<レッスン名>.mp3 と NN_<レッスン名>.srt（01–99）および任意の翻訳 TXT を使用します。余分な .en.txt は無視されます。"};
 
 export function adminImportT(locale: UiLocale, key: AdminImportMessageKey, values: Record<string, string | number> = {}) {
-  return Object.entries(values).reduce((message, [name, value]) => message.replaceAll(`{${name}}`, String(value)), adminImportMessages[locale][key]);
+  return Object.entries(values).reduce((message, [name, value]) => message.replaceAll(`{${name}}`, String(value)), key==="directFilesHint"?sourceFileHints[locale]:adminImportMessages[locale][key]);
 }
 
 const errorKeys: Record<string, AdminImportMessageKey> = {

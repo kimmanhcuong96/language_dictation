@@ -32,6 +32,9 @@ try {
   await sql`SELECT id, sentence_id, user_id, body, status, created_at FROM listening_sentence_comments LIMIT 0`;
   await sql`SELECT id, comment_id, reporter_user_id, reason, details, created_at FROM listening_sentence_comment_reports LIMIT 0`;
   await sql`SELECT id, comment_id, target_user_id, actor_user_id, action, reason, body_snapshot FROM listening_sentence_comment_moderation_log LIMIT 0`;
+  await sql`SELECT id, user_id, source, resource_id, duration_seconds, occurred_at FROM learning_activity_events LIMIT 0`;
+  await sql`SELECT study_7_day_limit, study_30_day_limit, translation_7_day_limit, translation_30_day_limit FROM leaderboard_settings WHERE singleton=TRUE`;
+  await sql`SELECT id, actor_user_id, previous_settings, next_settings, created_at FROM leaderboard_settings_audit_log LIMIT 0`;
 
   const lessons = await sql`SELECT id, sort_order, template_type, media_type FROM listening_lessons ORDER BY id`;
   const orders = lessons.map((lesson) => Number(lesson.sort_order));

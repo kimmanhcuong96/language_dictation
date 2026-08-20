@@ -30,15 +30,27 @@ export interface ActivityEvent {
   durationSeconds: number;
 }
 
+export interface ListeningProgressEvent {
+  lessonId: string;
+  sentenceId: string;
+  position: number;
+  attemptCount: number;
+  firstTryCorrect: boolean;
+  eventId: string;
+  durationSeconds: number;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   user_id: string;
   display_name: string;
   avatar_url: string | null;
-  completed_sentences: number;
-  active_seconds: number;
-  points: number;
+  value: number;
 }
+
+export type LeaderboardMetric = "study_time" | "translations";
+export type LeaderboardPeriod = "7d" | "30d";
+export interface LeaderboardSettings { study7DayLimit:number; study30DayLimit:number; translation7DayLimit:number; translation30DayLimit:number; updatedAt:string; }
 
 export interface AdminImportBatchItem {
   id: string;
@@ -85,8 +97,8 @@ interface AuthContextValue {
   setLeaderboardVisible: (visible: boolean) => Promise<void>;
   recordActivity: (event: Omit<ActivityEvent, "eventId">) => Promise<void>;
   syncProgress: (local: ProgressMap, lessonLanguages: Record<string, TargetLanguage>) => Promise<ProgressMap>;
-  leaderboard: (period: "day" | "week" | "month" | "year") => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null }>;
-  saveListeningProgress: (input: { lessonId: string; sentenceId: string; position: number; attemptCount: number; firstTryCorrect: boolean }) => Promise<void>;
+  leaderboard: (metric: LeaderboardMetric, period: LeaderboardPeriod) => Promise<{ leaders: LeaderboardEntry[]; currentUserId: string | null; limit:number; startsAt:string }>;
+  saveListeningProgress: (input: ListeningProgressEvent) => Promise<void>;
   resetListeningProgress: (input: { lessonId: string; sentenceId: string; position: number }) => Promise<void>;
   resetListeningLessonProgress: (lessonId: string) => Promise<void>;
   setListeningLessonFavorite: (lessonId: string, favorite: boolean) => Promise<{ lessonId: string; starCount: number; isStarred: boolean }>;
@@ -114,11 +126,13 @@ interface AuthContextValue {
   adminImportTranslations: (form:FormData) => Promise<{lessonId:string;translations:Array<{languageCode:string;lineCount:number}>}>;
   adminGetReportedComments: () => Promise<{comments:ReportedSentenceComment[]}>;
   adminModerateComment: (commentId:string,action:"hide"|"restore",reason:string) => Promise<void>;
+  adminGetLeaderboardSettings: () => Promise<LeaderboardSettings>;
+  adminUpdateLeaderboardSettings: (settings:Omit<LeaderboardSettings,"updatedAt">) => Promise<LeaderboardSettings>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const OUTBOX_KEY = "me2listen-activity-outbox-v1";
-const LEGACY_OUTBOX_KEY = "echotype-activity-outbox-v1";
+const LISTENING_OUTBOX_KEY = "me2listen-listening-progress-outbox-v1";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", ...init });
@@ -127,15 +141,14 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-function loadOutbox(): ActivityEvent[] {
+function loadUserOutbox<T>(key:string,userId:string): T[] {
   try {
-    const current = localStorage.getItem(OUTBOX_KEY);
-    const legacy = localStorage.getItem(LEGACY_OUTBOX_KEY);
-    return JSON.parse(current ?? legacy ?? "[]") as ActivityEvent[];
+    const stored = JSON.parse(localStorage.getItem(key) ?? "null") as {userId?:unknown;events?:unknown}|null;
+    return stored?.userId === userId && Array.isArray(stored.events) ? stored.events as T[] : [];
   } catch { return []; }
 }
 
-function saveOutbox(events: ActivityEvent[]) { localStorage.setItem(OUTBOX_KEY, JSON.stringify(events.slice(-200))); }
+function saveUserOutbox<T>(key:string,userId:string,events:T[]) { localStorage.setItem(key, JSON.stringify({userId,events:events.slice(-200)})); }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AccountUser | null>(null);
@@ -157,15 +170,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api("/api/progress/events", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(event) });
   }, [csrf]);
 
+  const sendListeningProgress = useCallback(async (input:ListeningProgressEvent) => {
+    if (!csrf) throw new Error("not_authenticated");
+    await api("/api/listening/progress", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+  }, [csrf]);
+
   const flushOutbox = useCallback(async () => {
-    if (!csrf) return;
-    const pending = loadOutbox();
-    const failed: ActivityEvent[] = [];
+    if (!csrf || !user) return;
+    const pending = loadUserOutbox<ActivityEvent>(OUTBOX_KEY,user.id);
+    const sent = new Set<string>();
     for (const event of pending) {
-      try { await sendActivity(event); } catch { failed.push(event); }
+      try { await sendActivity(event); sent.add(event.eventId); } catch { /* Keep failed events for the next retry. */ }
     }
-    saveOutbox(failed);
-  }, [csrf, sendActivity]);
+    saveUserOutbox(OUTBOX_KEY,user.id,loadUserOutbox<ActivityEvent>(OUTBOX_KEY,user.id).filter(event=>!sent.has(event.eventId)));
+    const listeningPending=loadUserOutbox<ListeningProgressEvent>(LISTENING_OUTBOX_KEY,user.id),listeningSent=new Set<string>();
+    for(const event of listeningPending){try{await sendListeningProgress(event);listeningSent.add(event.eventId);}catch{/* Keep failed events for the next retry. */}}
+    saveUserOutbox(LISTENING_OUTBOX_KEY,user.id,loadUserOutbox<ListeningProgressEvent>(LISTENING_OUTBOX_KEY,user.id).filter(event=>!listeningSent.has(event.eventId)));
+  }, [csrf,user,sendActivity,sendListeningProgress]);
 
   useEffect(() => {
     if (user && csrf) void flushOutbox();
@@ -195,11 +216,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     recordActivity: async (event) => {
       if (!user || !csrf) return;
       const completeEvent = { ...event, eventId: crypto.randomUUID() };
-      const pending = [...loadOutbox(), completeEvent];
-      saveOutbox(pending);
+      const pending = [...loadUserOutbox<ActivityEvent>(OUTBOX_KEY,user.id), completeEvent];
+      saveUserOutbox(OUTBOX_KEY,user.id,pending);
       try {
         await sendActivity(completeEvent);
-        saveOutbox(loadOutbox().filter((item) => item.eventId !== completeEvent.eventId));
+        saveUserOutbox(OUTBOX_KEY,user.id,loadUserOutbox<ActivityEvent>(OUTBOX_KEY,user.id).filter((item) => item.eventId !== completeEvent.eventId));
       } catch { /* The durable local outbox retries when connectivity returns. */ }
     },
     syncProgress: async (local, lessonLanguages) => {
@@ -230,10 +251,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return merged;
     },
-    leaderboard: async (period) => api(`/api/leaderboard?period=${period}`),
+    leaderboard: async (metric, period) => api(`/api/leaderboard?metric=${metric}&period=${period}`),
     saveListeningProgress: async (input) => {
-      if (!csrf) throw new Error("not_authenticated");
-      await api("/api/listening/progress", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify(input) });
+      if (!csrf || !user) throw new Error("not_authenticated");
+      saveUserOutbox(LISTENING_OUTBOX_KEY,user.id,[...loadUserOutbox<ListeningProgressEvent>(LISTENING_OUTBOX_KEY,user.id),input]);
+      await sendListeningProgress(input);
+      saveUserOutbox(LISTENING_OUTBOX_KEY,user.id,loadUserOutbox<ListeningProgressEvent>(LISTENING_OUTBOX_KEY,user.id).filter(item=>item.eventId!==input.eventId));
     },
     resetListeningProgress: async (input) => {
       if (!csrf) throw new Error("not_authenticated");
@@ -330,7 +353,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminModerateComment: async (commentId,action,reason) => {
       if(!csrf||!user?.isAdmin)throw new Error("forbidden");await api(`/api/listening/admin/comments/${encodeURIComponent(commentId)}/moderation`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({action,reason})});
     },
-  }), [user, loading, csrf, sendActivity]);
+    adminGetLeaderboardSettings: async () => {
+      if(!user?.isAdmin)throw new Error("forbidden");
+      return (await api<{settings:LeaderboardSettings}>("/api/admin/leaderboard-settings")).settings;
+    },
+    adminUpdateLeaderboardSettings: async (settings) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");
+      return (await api<{settings:LeaderboardSettings}>("/api/admin/leaderboard-settings",{method:"PATCH",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(settings)})).settings;
+    },
+  }), [user, loading, csrf, sendActivity, sendListeningProgress]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

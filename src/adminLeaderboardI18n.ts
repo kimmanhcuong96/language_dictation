@@ -1,0 +1,9 @@
+import type { UiLocale } from "./types";
+
+const en={title:"Leaderboard settings",description:"Configure how many learners appear in each ranking.",studyTime:"Study time",translations:"Approved translation contributions",week:"Last 7 days",month:"Last 30 days",topCount:"Maximum learners",rangeHint:"Enter a whole number from 1 to 100.",save:"Save settings",saving:"Saving…",saved:"Leaderboard settings saved.",loadError:"Could not load leaderboard settings.",saveError:"Could not save leaderboard settings.",retry:"Retry"} as const;
+type Key=keyof typeof en;type Messages=Record<Key,string>;
+const vi:Messages={title:"Cài đặt bảng xếp hạng",description:"Cấu hình số người được hiển thị trong từng bảng xếp hạng.",studyTime:"Thời gian học",translations:"Câu dịch đã được duyệt",week:"7 ngày gần nhất",month:"30 ngày gần nhất",topCount:"Số người tối đa",rangeHint:"Nhập số nguyên từ 1 đến 100.",save:"Lưu cài đặt",saving:"Đang lưu…",saved:"Đã lưu cài đặt bảng xếp hạng.",loadError:"Không thể tải cài đặt bảng xếp hạng.",saveError:"Không thể lưu cài đặt bảng xếp hạng.",retry:"Thử lại"};
+const zh:Messages={title:"排行榜设置",description:"设置每个排行榜显示的学习者人数。",studyTime:"学习时长",translations:"已审核翻译贡献",week:"最近 7 天",month:"最近 30 天",topCount:"最多显示人数",rangeHint:"请输入 1 到 100 之间的整数。",save:"保存设置",saving:"保存中…",saved:"排行榜设置已保存。",loadError:"无法加载排行榜设置。",saveError:"无法保存排行榜设置。",retry:"重试"};
+const ja:Messages={title:"ランキング設定",description:"各ランキングに表示する人数を設定します。",studyTime:"学習時間",translations:"承認済み翻訳の貢献",week:"過去7日間",month:"過去30日間",topCount:"最大表示人数",rangeHint:"1～100の整数を入力してください。",save:"設定を保存",saving:"保存中…",saved:"ランキング設定を保存しました。",loadError:"ランキング設定を読み込めませんでした。",saveError:"ランキング設定を保存できませんでした。",retry:"再試行"};
+const messages:Record<UiLocale,Messages>={vi,en,zh,ja};
+export const adminLeaderboardT=(locale:UiLocale,key:Key)=>messages[locale][key];

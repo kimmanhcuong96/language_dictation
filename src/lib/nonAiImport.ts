@@ -16,7 +16,7 @@ export const NON_AI_IMPORT_LIMITS = {
 export interface ImportResourceDescriptor {
   name: string;
   size: number;
-  kind: "audio" | "youtube_link" | "names" | "srt" | "translation" | "unsupported";
+  kind: "audio" | "youtube_link" | "names" | "srt" | "translation" | "ignored" | "unsupported";
   translationLanguage?: string;
   translationBasename?: string;
   lessonBasename?: string;
@@ -56,6 +56,7 @@ export function validateImportCandidateSlugs(
 export function describeImportResource(name: string, size: number): ImportResourceDescriptor {
   const fileName = name.replace(/\\/gu, "/").split("/").at(-1) ?? "";
   if (fileName.endsWith(".link.txt")) return { name, size, kind: "youtube_link", lessonBasename: fileName.slice(0, -".link.txt".length) };
+  if (fileName.endsWith(".en.txt")) return { name, size, kind: "ignored" };
   if (fileName.endsWith(".name.json")) return { name, size, kind: "names", lessonBasename: fileName.slice(0, -".name.json".length) };
   const rawExtension = fileName.match(/\.([^.]+)$/u)?.[1];
   const extension = rawExtension?.toLocaleLowerCase();
@@ -89,6 +90,7 @@ export function pairImportResources(resources: ImportResourceDescriptor[]): Impo
   const unsupported: ImportPairCandidate[] = [];
   const youtubeBasenames = new Set(resources.filter((resource) => resource.kind === "youtube_link").map((resource) => resource.lessonBasename ?? ""));
   for (const resource of resources) {
+    if (resource.kind === "ignored") continue;
     if (resource.kind === "unsupported") {
       unsupported.push({ key: `unsupported:${resource.name}`, lessonName: resource.name, slug: "", lessonOrder: 0, sourceFilename: resource.name, sourceType: "audio", translations: {}, errors: [resource.error ?? "unsupported_file_type"] });
       continue;

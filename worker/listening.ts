@@ -271,7 +271,9 @@ async function saveProgress(request: Request, env: Env, session: ListeningSessio
   const position = Number.isInteger(body.position) && Number(body.position) > 0 && Number(body.position) <= 1000 ? Number(body.position) : null;
   const attemptCount = Number.isInteger(body.attemptCount) && Number(body.attemptCount) > 0 && Number(body.attemptCount) <= 1000 ? Number(body.attemptCount) : null;
   const firstTryCorrect = typeof body.firstTryCorrect === "boolean" ? body.firstTryCorrect : null;
-  if (!lessonId || !sentenceId || !position || !attemptCount || firstTryCorrect === null) return json({ error: "invalid_progress" }, 422);
+  const eventId = typeof body.eventId === "string" && /^[0-9a-f-]{36}$/iu.test(body.eventId) ? body.eventId : null;
+  const durationSeconds = Number.isInteger(body.durationSeconds) ? Math.min(300, Math.max(1, Number(body.durationSeconds))) : null;
+  if (!lessonId || !sentenceId || !position || !attemptCount || firstTryCorrect === null || !eventId || !durationSeconds) return json({ error: "invalid_progress" }, 422);
   const sql = sqlFor(env), validRows = await sql`SELECT 1 FROM listening_sentences WHERE id=${sentenceId} AND lesson_id=${lessonId} AND position=${position}`; if (!validRows.length) return json({ error: "invalid_progress" }, 422);
   await sql`
     WITH saved_sentence AS (
@@ -284,6 +286,11 @@ async function saveProgress(request: Request, env: Env, session: ListeningSessio
         updated_at=now(),
         completed_at=COALESCE(listening_sentence_progress.completed_at,now())
       RETURNING sentence_id
+    ), saved_activity AS (
+      INSERT INTO learning_activity_events(id,user_id,source,resource_id,duration_seconds)
+      VALUES(${eventId},${session.id},'LISTENING',${sentenceId},${durationSeconds})
+      ON CONFLICT(id) DO NOTHING
+      RETURNING id
     ), counts AS (
       SELECT COUNT(*)::int AS completed_count,
         (SELECT sentence_count::int FROM listening_lessons WHERE id=${lessonId}) AS total
@@ -559,13 +566,13 @@ async function extractZipResources(value: string | File | null): Promise<Normali
     if (resourceCount > NON_AI_IMPORT_LIMITS.maxResources) throw new Error("too_many_resources");
     if (extractedBytes > NON_AI_IMPORT_LIMITS.maxExtractedBytes) throw new Error("zip_extracted_size_exceeded");
     const descriptor = describeImportResource(entry.name, entry.originalSize); descriptors.push(descriptor);
-    return descriptor.kind !== "unsupported";
+    return descriptor.kind !== "unsupported" && descriptor.kind !== "ignored";
   } });
   const files = Object.entries(extracted).map(([name, bytes]) => ({ name, file:new File([bytes], name, { type:name.toLocaleLowerCase().endsWith(".mp3") ? "audio/mpeg" : "application/x-subrip" }) }));
   return { files, descriptors, originalArchive:value };
 }
 
-async function createResourceArchive(files:BatchSourceFile[]):Promise<Uint8Array>{const entries:Record<string,Uint8Array>={};for(const entry of files){const descriptor=describeImportResource(entry.name,entry.file.size);if(descriptor.kind!=="unsupported")entries[entry.name]=new Uint8Array(await entry.file.arrayBuffer());}return zipSync(entries,{level:0});}
+async function createResourceArchive(files:BatchSourceFile[]):Promise<Uint8Array>{const entries:Record<string,Uint8Array>={};for(const entry of files){const descriptor=describeImportResource(entry.name,entry.file.size);if(descriptor.kind!=="unsupported"&&descriptor.kind!=="ignored")entries[entry.name]=new Uint8Array(await entry.file.arrayBuffer());}return zipSync(entries,{level:0});}
 
 function isSafeArchivePath(name: string): boolean {
   if (!name || name.includes("\0") || name.startsWith("/") || name.startsWith("\\") || /^[a-z]:/iu.test(name)) return false;

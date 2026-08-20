@@ -36,6 +36,18 @@ describe("non-AI batch import", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("ignores redundant .en.txt files and keeps SRT as the canonical source", () => {
+    expect(describeImportResource("01_business.en.txt",100)).toMatchObject({kind:"ignored"});
+    const [result]=pairImportResources([
+      describeImportResource("01_business.mp3",100),
+      describeImportResource("01_business.srt",100),
+      describeImportResource("01_business.en.txt",100),
+      describeImportResource("01_business.vi.txt",100),
+    ]);
+    expect(result).toMatchObject({translations:{vi:"01_business.vi.txt"},errors:[]});
+    expect(result.errors).not.toContain("unsupported_translation_language:en");
+  });
+
   it("groups a YouTube link, SRT, and translations as one lesson", () => {
     const [result] = pairImportResources([
       describeImportResource("lesson 01.link.txt", 100),

@@ -26,6 +26,8 @@ describe("application routing", () => {
     expect(viewPath({ page: "adminTranslations" })).toBe("/admin/listening/translations");
     expect(resolveAppView("/admin/listening/comments", "")).toEqual({ page: "adminComments" });
     expect(viewPath({ page: "adminComments" })).toBe("/admin/listening/comments");
+    expect(resolveAppView("/admin/leaderboard", "")).toEqual({ page: "adminLeaderboard" });
+    expect(viewPath({ page: "adminLeaderboard" })).toBe("/admin/leaderboard");
   });
 
   it("leaves a canonical lesson before navigating back to a section", () => {

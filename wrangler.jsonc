@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "me2listen",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-16",
+  "compatibility_date": "2026-08-20",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
   "assets": {
@@ -17,5 +17,8 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
+  },
+  "triggers": {
+    "crons": ["17 3 * * *"]
   }
 }

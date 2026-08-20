@@ -18,7 +18,6 @@ import {
   ListMusic,
   LogIn,
   LogOut,
-  Medal,
   Menu,
   Moon,
   Pause,
@@ -34,7 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useAuth, type LeaderboardEntry } from "./auth";
+import { useAuth } from "./auth";
 import { lessons, lessonsByLanguage, targetLanguages } from "./data/lessons";
 import { localeLabels, translate, type TranslationKey } from "./i18n";
 import { lessonT } from "./lessonI18n";
@@ -51,6 +50,9 @@ import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./typ
 import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
 import { useTheme } from "./theme";
 import { adminSystemT } from "./adminSystemI18n";
+import { LeaderboardModal } from "./components/LeaderboardModal";
+import { LeaderboardSettingsPage } from "./components/admin/LeaderboardSettingsPage";
+import { createActiveStudyTimer } from "./lib/activeStudyTimer";
 
 type View = AppView;
 const getInitialView = (): View => resolveAppView(window.location.pathname, window.location.hash);
@@ -111,6 +113,8 @@ function App() {
     <TranslationReviewPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminComments" ? (
     <CommentModerationPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
+  ) : view.page === "adminLeaderboard" ? (
+    <LeaderboardSettingsPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
@@ -410,7 +414,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
   const [showTranslation, setShowTranslation] = useState(false);
   const [repeat, setRepeat] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const sentenceStartedAt = useRef(Date.now());
+  const activeStudyTimer = useRef(createActiveStudyTimer());
   const sentence = lesson.sentences[index];
   const evaluation = evaluateAnswer({ expected: sentence.text, actual: typed, language: lesson.language });
   const lessonDone = progress[lesson.id]?.completed.length ?? 0;
@@ -418,8 +422,16 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
 
   useEffect(() => {
     setTyped(""); setChecked(false); setScore(0); setShowTranslation(false); setPlaying(false);
-    sentenceStartedAt.current = Date.now();
+    activeStudyTimer.current.reset(document.visibilityState === "visible" && document.hasFocus());
   }, [index, lesson.id]);
+
+  useEffect(() => {
+    const pause=()=>activeStudyTimer.current.pause();
+    const resume=()=>{if(document.visibilityState==="visible"&&document.hasFocus())activeStudyTimer.current.resume();};
+    const visibility=()=>document.visibilityState==="visible"?resume():pause();
+    window.addEventListener("focus",resume);window.addEventListener("blur",pause);document.addEventListener("visibilitychange",visibility);resume();
+    return()=>{pause();window.removeEventListener("focus",resume);window.removeEventListener("blur",pause);document.removeEventListener("visibilitychange",visibility);};
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -446,12 +458,14 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
     const existing = progress[lesson.id] ?? { completed: [], attempts: 0, correct: 0, updatedAt: "" };
     const completed = nextScore >= 80 && !existing.completed.includes(index) ? [...existing.completed, index] : existing.completed;
     onProgress({ ...progress, [lesson.id]: { completed, attempts: existing.attempts + 1, correct: existing.correct + (nextScore >= 80 ? 1 : 0), updatedAt: new Date().toISOString() } });
+    const durationSeconds=activeStudyTimer.current.elapsedSeconds();
+    activeStudyTimer.current.reset(document.visibilityState === "visible" && document.hasFocus());
     void auth.recordActivity({
       lessonId: lesson.id,
       language: lesson.language,
       sentenceIndex: index,
       typedAnswer: typed,
-      durationSeconds: Math.max(1, Math.min(300, Math.round((Date.now() - sentenceStartedAt.current) / 1000))),
+      durationSeconds,
     });
   };
 
@@ -569,32 +583,9 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
 function LeaderboardLauncher({ locale, nav = false }: { locale: UiLocale; nav?: boolean }) {
   const t = getT(locale);
   const [open, setOpen] = useState(false);
-  return <><a className={nav ? "nav-item platform-link platform-link-talk" : "platform-link platform-link-talk"} href="https://me2talk.com/" target="_blank" rel="noreferrer">Me2talk</a><a className={nav ? "nav-item platform-link platform-link-write" : "platform-link platform-link-write"} href="https://write-checker.pages.dev/" target="_blank" rel="noreferrer">Me2write</a>{nav ? <button className="nav-item leaderboard-nav-item" onClick={() => setOpen(true)}><Trophy size={19} />{t("leaderboard")}</button> : <button className="leaderboard-button" onClick={() => setOpen(true)} aria-label={t("leaderboard")}><Trophy size={17} /><span>{t("leaderboard")}</span></button>}{open && <LeaderboardModal locale={locale} onClose={() => setOpen(false)} />}</>;
-}
-
-function LeaderboardModal({ locale, onClose }: { locale: UiLocale; onClose: () => void }) {
-  const t = getT(locale);
-  const auth = useAuth();
-  const [period, setPeriod] = useState<"day" | "week" | "month" | "year">("week");
-  const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    void auth.leaderboard(period).then((result) => setLeaders(result.leaders)).catch(() => setLeaders([])).finally(() => setLoading(false));
-  }, [period]);
-
-  const top = leaders.filter((entry) => entry.rank <= 50);
-  const currentOutside = leaders.find((entry) => entry.user_id === auth.user?.id && entry.rank > 50);
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal leaderboard-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={onClose} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline"><Medal size={14} /> {t("leaderboard").toUpperCase()}</span><h2>{t("leaderboardTitle")}</h2><div className="period-tabs">{(["day", "week", "month", "year"] as const).map((item) => <button className={period === item ? "active" : ""} key={item} onClick={() => setPeriod(item)}>{t(item)}</button>)}</div>
-    <div className="leader-list">{loading ? Array.from({ length: 5 }, (_, index) => <div className="leader-skeleton" key={index} />) : top.length ? top.map((entry) => <LeaderRow key={entry.user_id} entry={entry} current={entry.user_id === auth.user?.id} t={t} />) : <div className="empty-leaders"><Trophy size={27} /><p>{t("emptyLeaderboard")}</p></div>}</div>
-    {currentOutside && <div className="current-rank"><small>{t("yourPosition")}</small><LeaderRow entry={currentOutside} current t={t} /></div>}
-  </section></div>;
-}
-
-function LeaderRow({ entry, current, t }: { entry: LeaderboardEntry; current: boolean; t: ReturnType<typeof getT> }) {
-  const initials = entry.display_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  return <div className={`leader-row ${current ? "is-current" : ""}`}><span className={`rank rank-${entry.rank}`}>{entry.rank <= 3 ? ["🥇", "🥈", "🥉"][entry.rank - 1] : entry.rank}</span><span className="leader-avatar">{entry.avatar_url ? <img src={entry.avatar_url} alt="" referrerPolicy="no-referrer" /> : initials}</span><div className="leader-name"><b>{entry.display_name}</b><small>{Math.round(entry.active_seconds / 60)} {t("activeMinutes")} · {entry.completed_sentences} {t("sentences")}</small></div><strong>{entry.points} <small>{t("points")}</small></strong></div>;
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const close = () => { setOpen(false); requestAnimationFrame(() => launcherRef.current?.focus()); };
+  return <><a className={nav ? "nav-item platform-link platform-link-talk" : "platform-link platform-link-talk"} href="https://me2talk.com/" target="_blank" rel="noreferrer">Me2talk</a><a className={nav ? "nav-item platform-link platform-link-write" : "platform-link platform-link-write"} href="https://write-checker.pages.dev/" target="_blank" rel="noreferrer">Me2write</a>{nav ? <button ref={launcherRef} type="button" className="nav-item leaderboard-nav-item" onClick={() => setOpen(true)}><Trophy size={19} />{t("leaderboard")}</button> : <button ref={launcherRef} type="button" className="leaderboard-button" onClick={() => setOpen(true)} aria-label={t("leaderboard")}><Trophy size={17} /><span>{t("leaderboard")}</span></button>}{open && <LeaderboardModal locale={locale} onClose={close} />}</>;
 }
 
 function TranscriptModal({ lesson, audioUrl, locale, t, onClose, onPlay }: { lesson: Lesson; audioUrl?: string; locale:UiLocale; t: ReturnType<typeof getT>; onClose: () => void; onPlay: (text: string) => void }) {
