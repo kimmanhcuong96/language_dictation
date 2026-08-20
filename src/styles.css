@@ -423,3 +423,219 @@ html[data-theme="light"] .admin-system.admin-theme-light{color-scheme:light}
 
 @media(max-width:600px){.landing-actions .locale-select{width:42px;min-width:42px}.landing-actions .locale-trigger{width:42px;padding:0 9px}.landing-actions .locale-name,.landing-actions .locale-trigger>svg{display:none}.landing-actions .locale-menu{min-width:156px}.landing-actions .theme-toggle{width:38px;height:38px;flex-basis:38px}.practice-header{grid-template-columns:35px 1fr 85px}.practice-user-actions{gap:5px}.practice-user-actions .theme-toggle{width:38px;height:38px;flex-basis:38px}}
 @media(max-width:420px){.landing-header .logo>span:last-child{display:none}}
+
+/* Dark palette v2: neutral green-charcoal surfaces with explicit hierarchy. */
+html[data-theme="dark"]{
+  --dark-canvas:#0d1219;
+  --dark-surface:#151c25;
+  --dark-surface-raised:#1b2430;
+  --dark-surface-muted:#222d3a;
+  --dark-border:#344151;
+  --dark-border-strong:#657b91;
+  --dark-text:#f1f5f3;
+  --dark-muted:#aeb9b4;
+  --dark-subtle:#84928c;
+  --dark-accent:#6fd397;
+  --dark-accent-hover:#8be2ad;
+  --dark-accent-soft:#203e2c;
+  --dark-link:#91c8ff;
+  --dark-danger:#ff9c8f;
+  --dark-warning:#eccb78;
+  --ink:var(--dark-text);
+  --muted:var(--dark-muted);
+  --line:var(--dark-border);
+  --cream:var(--dark-canvas);
+  --paper:var(--dark-surface);
+  --brand:var(--dark-accent);
+  --brand-strong:var(--dark-accent-hover);
+  --brand-soft:var(--dark-accent-soft);
+  --brand-contrast:#0b1710;
+  --focus-ring:#a2e8ba;
+  --sage:#8dbba2;
+  background:var(--dark-canvas);
+  color:var(--dark-text);
+  scrollbar-color:var(--dark-border-strong) var(--dark-canvas)
+}
+html[data-theme="dark"] body,
+html[data-theme="dark"] .library-main,
+html[data-theme="dark"] .practice-shell,
+html[data-theme="dark"] .dictation-shell,
+html[data-theme="dark"] .practice-main{background:var(--dark-canvas);color:var(--dark-text)}
+html[data-theme="dark"] .language-home{background:radial-gradient(circle at 50% -10%,#202d38 0,var(--dark-canvas) 52%)}
+html[data-theme="dark"] .topbar{background:#111821f2;border-color:var(--dark-border)}
+html[data-theme="dark"] .learning-page-header,
+html[data-theme="dark"] .content-shell>header,
+html[data-theme="dark"] .practice-header,
+html[data-theme="dark"] .dictation-shell>header,
+html[data-theme="dark"] .sidebar,
+html[data-theme="dark"] .sentence-list{background:var(--dark-surface);border-color:var(--dark-border)}
+html[data-theme="dark"] .language-card,
+html[data-theme="dark"] .account-popover,
+html[data-theme="dark"] .modal,
+html[data-theme="dark"] .answer-panel,
+html[data-theme="dark"] .lesson-card,
+html[data-theme="dark"] .content-card,
+html[data-theme="dark"] .topic-card,
+html[data-theme="dark"] .section-panel,
+html[data-theme="dark"] .section-panel h2>button,
+html[data-theme="dark"] .section-lesson-card,
+html[data-theme="dark"] .lesson-practice-card,
+html[data-theme="dark"] .listening-settings-dialog,
+html[data-theme="dark"] .answer-insight section,
+html[data-theme="dark"] .lesson-completion-dialog,
+html[data-theme="dark"] .lesson-translation-panel{background:var(--dark-surface-raised)!important;border-color:var(--dark-border);color:var(--dark-text);box-shadow:0 14px 36px #0000002e}
+html[data-theme="dark"] .language-card{background:#1b2430e8!important}
+html[data-theme="dark"] .section-lesson-grid,
+html[data-theme="dark"] .answer-visible .answer-input-wrap textarea,
+html[data-theme="dark"] .translation-contribution,
+html[data-theme="dark"] .add-translation-language{background:var(--dark-surface);border-color:var(--dark-border)}
+html[data-theme="dark"] .header-search,
+html[data-theme="dark"] .period-tabs,
+html[data-theme="dark"] .lesson-mode-tabs,
+html[data-theme="dark"] .practice-audio .segment-player{background:var(--dark-surface-muted);border-color:var(--dark-border)}
+html[data-theme="dark"] .locale-trigger,
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .section-search,
+html[data-theme="dark"] .section-level-filter,
+html[data-theme="dark"] .select-wrap,
+html[data-theme="dark"] .answer-input-wrap textarea,
+html[data-theme="dark"] .answer-panel textarea,
+html[data-theme="dark"] .word-result,
+html[data-theme="dark"] .microphone-placeholder,
+html[data-theme="dark"] .retry-answer-button,
+html[data-theme="dark"] .playback-settings-button,
+html[data-theme="dark"] .listening-setting-row select,
+html[data-theme="dark"] .listening-settings-dialog>footer button,
+html[data-theme="dark"] .playback-options button,
+html[data-theme="dark"] .playback-options select,
+html[data-theme="dark"] .sentence-nav button,
+html[data-theme="dark"] .mode-tabs button,
+html[data-theme="dark"] .icon-button,
+html[data-theme="dark"] .audio-tools button,
+html[data-theme="dark"] .modal-actions>button:not(.primary-button),
+html[data-theme="dark"] .section-empty button,
+html[data-theme="dark"] .skip-button,
+html[data-theme="dark"] .lesson-audio-state button,
+html[data-theme="dark"] .translation-contribution button,
+html[data-theme="dark"] .add-translation-language button{background:var(--dark-surface-muted)!important;border-color:var(--dark-border-strong)!important;color:var(--dark-text)}
+html[data-theme="dark"] .locale-trigger:hover,
+html[data-theme="dark"] .theme-toggle:hover,
+html[data-theme="dark"] .account-popover>button:hover,
+html[data-theme="dark"] .transcript-lines button:hover,
+html[data-theme="dark"] .queue-items button:hover,
+html[data-theme="dark"] .lesson-mode-tabs button:hover:not(.active){background:#29382e!important;border-color:var(--dark-border-strong)!important;color:var(--dark-accent-hover)}
+html[data-theme="dark"] .primary-button,
+html[data-theme="dark"] .login-button,
+html[data-theme="dark"] .lesson-mode-tabs button.active,
+html[data-theme="dark"] .lesson-mode-tabs .transcript-tab.active,
+html[data-theme="dark"] .mode-tabs button.active{border-color:var(--dark-accent)!important;background:#27804f!important;color:#fff!important;box-shadow:0 5px 16px #07140c66}
+html[data-theme="dark"] .primary-button:hover:not(:disabled),
+html[data-theme="dark"] .login-button:hover{border-color:var(--dark-accent-hover)!important;background:#2a8352!important}
+html[data-theme="dark"] .dictation-button{background:var(--dark-accent-soft);border-color:#356448;color:var(--dark-accent-hover)}
+html[data-theme="dark"] .leaderboard-button{background:#3a301d;border-color:#655332;color:#f1cf79}
+html[data-theme="dark"] .leaderboard-button:hover{background:#473a22;border-color:#80683c}
+html[data-theme="dark"] .next-lesson-card{border-color:#3c5645;background:linear-gradient(135deg,var(--dark-surface-raised),#1d3125);box-shadow:0 12px 30px #0003}
+html[data-theme="dark"] .next-lesson-copy strong,
+html[data-theme="dark"] .lesson-completion-dialog h2,
+html[data-theme="dark"] .lesson-translation-panel>header h2,
+html[data-theme="dark"] .pronunciation-words span{color:var(--dark-text)}
+html[data-theme="dark"] .breadcrumbs button,
+html[data-theme="dark"] .topic-title-row h2,
+html[data-theme="dark"] .section-lesson-copy>b{color:var(--dark-link)}
+html[data-theme="dark"] .lesson-tip,
+html[data-theme="dark"] .tip-card{border-color:#665735;background:#292418;color:var(--dark-warning)}
+html[data-theme="dark"] .lesson-tip p,
+html[data-theme="dark"] .tip-card p{color:#cfc09a}
+html[data-theme="dark"] .word-result .correct,
+html[data-theme="dark"] .correct-answer{background:#1d412b;color:#91e3ad}
+html[data-theme="dark"] .word-result .near-correct{background:#473a1e;color:#f2ce79}
+html[data-theme="dark"] .word-result .incorrect{background:#472824;color:#ffaaa0}
+html[data-theme="dark"] .word-result .hidden{background:#29332d;color:#a7b2aa}
+html[data-theme="dark"] .section-lesson-card.completed,
+html[data-theme="dark"] .content-card.completed{border-color:#4e7b5f;background:#1b3826;box-shadow:inset 3px 0 #67c98e}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder{color:var(--dark-subtle)}
+html[data-theme="dark"] :where(button,a,input,select,textarea):focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+
+html[data-theme="dark"] .admin-system.admin-theme-dark{
+  --admin-bg:var(--dark-canvas);
+  --admin-surface:var(--dark-surface-raised);
+  --admin-surface-2:var(--dark-surface-muted);
+  --admin-border:var(--dark-border);
+  --admin-text:var(--dark-text);
+  --admin-muted:var(--dark-muted);
+  --admin-accent:var(--dark-accent);
+  --admin-blue:var(--dark-link);
+  color-scheme:dark
+}
+html[data-theme="dark"] .admin-system-header{background:#111821f2}
+html[data-theme="dark"] .admin-system .import-mode-tabs button.active,
+html[data-theme="dark"] .admin-system .batch-actions>.primary-button,
+html[data-theme="dark"] .admin-system .primary-button{border-color:var(--dark-accent);background:#27804f;color:#fff}
+html[data-theme="dark"] .admin-system .selected-section{border-color:#3f6b50;background:#172d20}
+html[data-theme="dark"] .admin-feature-card:hover{border-color:var(--dark-accent);box-shadow:0 16px 38px #0006}
+html[data-theme="dark"] .admin-feature-icon{background:#1b3546;color:var(--dark-link)}
+html[data-theme="dark"] .admin-system-actions .admin-logout{border-color:#70423b;background:#3a2421;color:var(--dark-danger)}
+html[data-theme="dark"] .admin-system-actions button:hover{border-color:var(--dark-accent);color:var(--dark-text)}
+html[data-theme="dark"] .admin-system.admin-theme-dark :is(input,select,textarea),
+html[data-theme="dark"] .admin-system.admin-theme-dark .admin-system-actions button,
+html[data-theme="dark"] .admin-system.admin-theme-dark .batch-preview>header button,
+html[data-theme="dark"] .admin-system.admin-theme-dark .batch-actions>button{border-color:var(--dark-border-strong)}
+
+/* Header controls sit inside the header surface instead of reading as cards. */
+html[data-theme="dark"] :is(.landing-header,.topbar,.practice-header) :is(.theme-toggle,.locale-trigger,.icon-button){
+  background:#ffffff08!important;
+  border-color:#ffffff14!important;
+  color:var(--dark-muted);
+  box-shadow:none
+}
+html[data-theme="dark"] :is(.landing-header,.topbar,.practice-header) :is(.theme-toggle,.locale-trigger,.icon-button):hover{
+  background:#ffffff0f!important;
+  border-color:#ffffff24!important;
+  color:var(--dark-text)
+}
+html[data-theme="dark"] .learning-header .dictation-button{
+  background:#6fd39712;
+  border-color:#6fd39724;
+  color:var(--dark-accent)
+}
+html[data-theme="dark"] .learning-header .dictation-button:hover{
+  background:#6fd3971f;
+  border-color:#6fd3973d;
+  color:var(--dark-accent-hover)
+}
+html[data-theme="dark"] :is(.landing-header,.topbar) .leaderboard-button{
+  background:#eccb780d;
+  border-color:#eccb7824;
+  color:#dcc27f
+}
+html[data-theme="dark"] :is(.landing-header,.topbar) .leaderboard-button:hover{
+  background:#eccb7818;
+  border-color:#eccb7838;
+  color:#f0d38a
+}
+html[data-theme="dark"] .topbar .streak-pill{
+  background:#eccb780d;
+  border-color:#eccb7820;
+  color:#e9bb61
+}
+html[data-theme="dark"] .topbar .streak-pill span{color:#c7b78f}
+html[data-theme="dark"] :is(.landing-header,.topbar,.practice-header) .login-button{
+  border-color:#6fd3974a!important;
+  background:#27804f!important;
+  box-shadow:none
+}
+html[data-theme="dark"] .locale-select{background:transparent;color:var(--dark-text)}
+html[data-theme="dark"] .locale-trigger{color:var(--dark-text)}
+html[data-theme="dark"] .locale-trigger .locale-name{color:var(--dark-text)}
+html[data-theme="dark"] .locale-trigger>svg{color:var(--dark-muted)}
+html[data-theme="dark"] .locale-menu{
+  background:var(--dark-surface-raised)!important;
+  border-color:var(--dark-border)!important;
+  color:var(--dark-text);
+  box-shadow:0 16px 38px #0008
+}
+html[data-theme="dark"] .locale-option{background:transparent;color:var(--dark-text)}
+html[data-theme="dark"] .locale-option:hover,
+html[data-theme="dark"] .locale-option.selected{background:var(--dark-accent-soft);color:var(--dark-accent-hover)}
+html[data-theme="dark"] .locale-flag{background:#ffffff0d;box-shadow:inset 0 0 0 1px #ffffff12}

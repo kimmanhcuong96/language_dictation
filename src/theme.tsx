@@ -30,7 +30,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
     try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* Theme still works for this tab. */ }
-    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#111713" : "#27804f");
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#0d1219" : "#27804f");
   }, [theme]);
 
   useEffect(() => {
