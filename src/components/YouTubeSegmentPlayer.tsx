@@ -60,7 +60,9 @@ function loadYouTubeApi(): Promise<YouTubeNamespace> {
 export interface YouTubeSegmentPlayerHandle {
   replay(): void;
   toggle(): void;
-  playSegment(startMs: number, endMs: number): void;
+  playSegment(startMs: number, endMs: number, allowRepeat?: boolean): void;
+  resume(): void;
+  setBounds(startMs: number, endMs: number): void;
 }
 
 interface Props {
@@ -71,30 +73,37 @@ interface Props {
   playbackRate?: number;
   repeat?: boolean;
   repeatDelayMs?: number;
+  showControls?: boolean;
   onError?: () => void;
   onTimeUpdate?: (timeMs: number) => void;
   onPlaybackComplete?: () => void;
+  onPlayingChange?: (playing: boolean) => void;
 }
 
 const formatTime = (seconds: number) => { const whole = Math.max(0, Math.floor(seconds)); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`; };
 
-export const YouTubeSegmentPlayer = forwardRef<YouTubeSegmentPlayerHandle, Props>(function YouTubeSegmentPlayer({ videoId, startMs, endMs, locale, playbackRate = 1, repeat = false, repeatDelayMs = 0, onError, onTimeUpdate, onPlaybackComplete }, ref) {
+export const YouTubeSegmentPlayer = forwardRef<YouTubeSegmentPlayerHandle, Props>(function YouTubeSegmentPlayer({ videoId, startMs, endMs, locale, playbackRate = 1, repeat = false, repeatDelayMs = 0, showControls = true, onError, onTimeUpdate, onPlaybackComplete, onPlayingChange }, ref) {
   const containerRef = useRef<HTMLDivElement>(null),playerRef=useRef<YouTubePlayerApi|undefined>(undefined),timerRef=useRef<number|undefined>(undefined),sessionRef=useRef(createPlaybackSessionController());
-  const boundsRef=useRef({startMs,endMs}),rateRef=useRef(playbackRate),repeatRef=useRef(repeat),delayRef=useRef(repeatDelayMs),timeUpdateRef=useRef(onTimeUpdate),completionRef=useRef(onPlaybackComplete);
-  const [ready,setReady]=useState(false),[playing,setPlaying]=useState(false),[current,setCurrent]=useState(0),[error,setError]=useState(false);
-  boundsRef.current={startMs,endMs};rateRef.current=playbackRate;repeatRef.current=repeat;delayRef.current=repeatDelayMs;timeUpdateRef.current=onTimeUpdate;completionRef.current=onPlaybackComplete;
+  const boundsRef=useRef({startMs,endMs}),rateRef=useRef(playbackRate),repeatRef=useRef(repeat),delayRef=useRef(repeatDelayMs),timeUpdateRef=useRef(onTimeUpdate),completionRef=useRef(onPlaybackComplete),playingChangeRef=useRef(onPlayingChange),segmentRepeatRef=useRef(repeat),monitorRef=useRef<(sessionId:number,segmentEndMs:number)=>void>(undefined);
+  const [ready,setReady]=useState(false),[playing,setPlaying]=useState(false),[current,setCurrent]=useState(0),[error,setError]=useState(false),[activeBounds,setActiveBounds]=useState({startMs,endMs});
+  boundsRef.current={startMs,endMs};rateRef.current=playbackRate;repeatRef.current=repeat;delayRef.current=repeatDelayMs;timeUpdateRef.current=onTimeUpdate;completionRef.current=onPlaybackComplete;playingChangeRef.current=onPlayingChange;
+  const setPlayingState=(value:boolean)=>{setPlaying(value);playingChangeRef.current?.(value);};
   const clearTimer=()=>{if(timerRef.current!==undefined)window.clearTimeout(timerRef.current);timerRef.current=undefined;};
   const invalidate=()=>{sessionRef.current.invalidate();clearTimer();};
-  const fail=()=>{invalidate();setError(true);setPlaying(false);onError?.();};
-  const monitor=(sessionId:number,segmentEndMs:number)=>{if(!sessionRef.current.isActive(sessionId))return;const player=playerRef.current;if(!player)return;const time=player.getCurrentTime();setCurrent(Math.max(0,time-boundsRef.current.startMs/1000));timeUpdateRef.current?.(time*1000);if(time*1000>=segmentEndMs){player.pauseVideo();setPlaying(false);clearTimer();completionRef.current?.();if(repeatRef.current){timerRef.current=window.setTimeout(()=>{if(sessionRef.current.isActive(sessionId))playSegment(boundsRef.current.startMs,boundsRef.current.endMs);},delayRef.current);}return;}timerRef.current=window.setTimeout(()=>monitor(sessionId,segmentEndMs),100);};
-  const playSegment=(nextStartMs:number,nextEndMs:number)=>{const player=playerRef.current;if(!player||!ready||error)return;invalidate();boundsRef.current={startMs:nextStartMs,endMs:nextEndMs};const sessionId=sessionRef.current.begin();setCurrent(0);try{player.pauseVideo();player.seekTo(nextStartMs/1000,true);player.setPlaybackRate(rateRef.current);player.playVideo();setPlaying(true);timerRef.current=window.setTimeout(()=>monitor(sessionId,nextEndMs),100);}catch{fail();}};
+  const fail=()=>{invalidate();setError(true);setPlayingState(false);onError?.();};
+  const monitor=(sessionId:number,segmentEndMs:number)=>{if(!sessionRef.current.isActive(sessionId))return;const player=playerRef.current;if(!player)return;const time=player.getCurrentTime();setCurrent(Math.max(0,time-boundsRef.current.startMs/1000));timeUpdateRef.current?.(time*1000);if(time*1000>=segmentEndMs){player.pauseVideo();setPlayingState(false);clearTimer();completionRef.current?.();if(segmentRepeatRef.current){timerRef.current=window.setTimeout(()=>{if(sessionRef.current.isActive(sessionId))playSegment(boundsRef.current.startMs,boundsRef.current.endMs);},delayRef.current);}return;}timerRef.current=window.setTimeout(()=>monitor(sessionId,segmentEndMs),100);};
+  monitorRef.current=monitor;
+  const playSegment=(nextStartMs:number,nextEndMs:number,allowRepeat?:boolean)=>{const player=playerRef.current;if(!player||!ready||error)return;invalidate();boundsRef.current={startMs:nextStartMs,endMs:nextEndMs};setActiveBounds({startMs:nextStartMs,endMs:nextEndMs});segmentRepeatRef.current=allowRepeat??repeatRef.current;const sessionId=sessionRef.current.begin();setCurrent(0);try{player.pauseVideo();player.seekTo(nextStartMs/1000,true);player.setPlaybackRate(rateRef.current);player.playVideo();setPlayingState(true);timerRef.current=window.setTimeout(()=>monitor(sessionId,nextEndMs),100);}catch{fail();}};
   const replay=()=>playSegment(boundsRef.current.startMs,boundsRef.current.endMs);
-  const pause=()=>{invalidate();playerRef.current?.pauseVideo();setPlaying(false);};
+  const pause=()=>{invalidate();playerRef.current?.pauseVideo();setPlayingState(false);};
+  const resume=()=>{const player=playerRef.current;if(!player||!ready||error||playing)return;invalidate();const sessionId=sessionRef.current.begin();try{player.setPlaybackRate(rateRef.current);player.playVideo();setPlayingState(true);timerRef.current=window.setTimeout(()=>monitor(sessionId,boundsRef.current.endMs),100);}catch{fail();}};
   const toggle=()=>playing?pause():replay();
-  useImperativeHandle(ref,()=>({replay,toggle,playSegment}));
-  useEffect(()=>{let active=true;const host=containerRef.current;if(!host)return;setReady(false);setError(false);const element=document.createElement("div");host.replaceChildren(element);void loadYouTubeApi().then(api=>{if(!active)return;playerRef.current=new api.Player(element,{videoId,host:"https://www.youtube.com",playerVars:{playsinline:1,rel:0,origin:window.location.origin},events:{onReady:event=>{if(!active)return;playerRef.current=event.target;event.target.setPlaybackRate(rateRef.current);setReady(true);},onStateChange:event=>{if(active)setPlaying(event.data===1);},onError:fail}});}).catch(fail);return()=>{active=false;invalidate();playerRef.current?.destroy();playerRef.current=undefined;host.replaceChildren();};},[videoId]);
-  useEffect(()=>{invalidate();playerRef.current?.pauseVideo();setPlaying(false);setCurrent(0);boundsRef.current={startMs,endMs};},[startMs,endMs]);
+  const setBounds=(nextStartMs:number,nextEndMs:number)=>{invalidate();playerRef.current?.pauseVideo();setPlayingState(false);setCurrent(0);boundsRef.current={startMs:nextStartMs,endMs:nextEndMs};setActiveBounds({startMs:nextStartMs,endMs:nextEndMs});};
+  useImperativeHandle(ref,()=>({replay,toggle,playSegment,resume,setBounds}));
+  useEffect(()=>{let active=true;const host=containerRef.current;if(!host)return;setReady(false);setError(false);const element=document.createElement("div");host.replaceChildren(element);void loadYouTubeApi().then(api=>{if(!active)return;playerRef.current=new api.Player(element,{videoId,host:"https://www.youtube.com",playerVars:{playsinline:1,rel:0,cc_load_policy:0,origin:window.location.origin},events:{onReady:event=>{if(!active)return;playerRef.current=event.target;event.target.setPlaybackRate(rateRef.current);setReady(true);},onStateChange:event=>{if(!active)return;const isPlaying=event.data===1;setPlayingState(isPlaying);const player=playerRef.current;if(player)timeUpdateRef.current?.(player.getCurrentTime()*1000);if(isPlaying&&timerRef.current===undefined){const sessionId=sessionRef.current.begin();timerRef.current=window.setTimeout(()=>monitorRef.current?.(sessionId,boundsRef.current.endMs),100);}},onError:fail}});}).catch(fail);return()=>{active=false;invalidate();playerRef.current?.destroy();playerRef.current=undefined;host.replaceChildren();};},[videoId]);
+  useEffect(()=>{invalidate();playerRef.current?.pauseVideo();setPlayingState(false);setCurrent(0);boundsRef.current={startMs,endMs};setActiveBounds({startMs,endMs});},[startMs,endMs]);
+  useEffect(()=>{if(!ready)return;const interval=window.setInterval(()=>{const player=playerRef.current;if(!player)return;const time=player.getCurrentTime();setCurrent(Math.max(0,time-boundsRef.current.startMs/1000));timeUpdateRef.current?.(time*1000);},400);return()=>window.clearInterval(interval);},[ready]);
   useEffect(()=>{if(ready)playerRef.current?.setPlaybackRate(playbackRate);},[playbackRate,ready]);
-  const duration=Math.max(0,(endMs-startMs)/1000);
-  return <div className={`youtube-segment-player${error?" has-error":""}`}><div className="youtube-player-frame" ref={containerRef}/><div className="segment-player youtube-controls"><button type="button" className={`play-main ${playing?"playing":""}`} onClick={toggle} disabled={!ready||error} aria-label={lessonT(locale,playing?"pauseSentence":"playSentence")}>{playing?<Pause size={27} fill="currentColor"/>:<Play size={29} fill="currentColor"/>}</button><input aria-label={lessonT(locale,"seekSentence")} type="range" min="0" max={Math.max(duration,.01)} step="0.1" value={Math.min(current,duration)} disabled={!ready||error} onChange={event=>{const offset=Number(event.target.value);setCurrent(offset);playerRef.current?.seekTo(startMs/1000+offset,true);}}/><span className="audio-time">{formatTime(current)} / {formatTime(duration)}</span><button type="button" className="audio-replay-button" onClick={replay} disabled={!ready||error} aria-label={lessonT(locale,"repeatSentence")}><RotateCcw size={16}/></button>{error&&<span className="audio-error" role="alert">{lessonT(locale,"audioConnectionError")}</span>}</div></div>;
+  const duration=Math.max(0,(activeBounds.endMs-activeBounds.startMs)/1000);
+  return <div className={`youtube-segment-player${error?" has-error":""}`}><div className="youtube-player-frame" ref={containerRef}/>{showControls&&<div className="segment-player youtube-controls"><button type="button" className={`play-main ${playing?"playing":""}`} onClick={toggle} disabled={!ready||error} aria-label={lessonT(locale,playing?"pauseSentence":"playSentence")}>{playing?<Pause size={27} fill="currentColor"/>:<Play size={29} fill="currentColor"/>}</button><input aria-label={lessonT(locale,"seekSentence")} type="range" min="0" max={Math.max(duration,.01)} step="0.1" value={Math.min(current,duration)} disabled={!ready||error} onChange={event=>{const offset=Number(event.target.value);setCurrent(offset);const absoluteMs=activeBounds.startMs+offset*1000;playerRef.current?.seekTo(absoluteMs/1000,true);timeUpdateRef.current?.(absoluteMs);}}/><span className="audio-time">{formatTime(current)} / {formatTime(duration)}</span><button type="button" className="audio-replay-button" onClick={replay} disabled={!ready||error} aria-label={lessonT(locale,"repeatSentence")}><RotateCcw size={16}/></button>{error&&<span className="audio-error" role="alert">{lessonT(locale,"audioConnectionError")}</span>}</div>}</div>;
 });

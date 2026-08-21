@@ -33,6 +33,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "jsdom": "latest",
+    "playwright": "^1.62.1",
     "postgres": "latest",
     "vitest": "latest",
     "wrangler": "latest"
