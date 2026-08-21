@@ -179,6 +179,31 @@ function ThemeToggle({ locale }: { locale: UiLocale }) {
   return <button type="button" className="theme-toggle" title={label} aria-label={label} aria-pressed={theme === "dark"} onClick={toggleTheme}>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button>;
 }
 
+function MobileHeaderActions({ locale, onLocale, extraAction }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; extraAction?: { label: string; onClick: () => void } }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const t = getT(locale);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent) { if (event.key === "Escape") setOpen(false); return; }
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
+  }, [open]);
+  return <div ref={rootRef} className="mobile-header-actions">
+    <ThemeToggle locale={locale}/><AccountMenu locale={locale}/>
+    <button type="button" className="mobile-header-more" aria-label={open ? t("closeMenu") : t("openMenu")} aria-expanded={open} aria-controls="mobile-header-menu" onClick={() => setOpen(value => !value)}>{open ? <X size={20}/> : <Menu size={20}/>}</button>
+    {open && <div id="mobile-header-menu" className="mobile-header-menu" role="dialog" aria-label={t("openMenu")}>
+      {extraAction && <button type="button" className="mobile-header-menu-action" onClick={() => { extraAction.onClick(); setOpen(false); }}><Headphones size={17}/>{extraAction.label}</button>}
+      <LeaderboardLauncher locale={locale}/>
+      <LocaleSelect locale={locale} onLocale={next => { onLocale(next); setOpen(false); }}/>
+    </div>}
+  </div>;
+}
+
 function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLocale: (locale: UiLocale) => void; onChoose: (language: TargetLanguage) => void }) {
   const t = getT(locale);
   const [englishCategoryCount,setEnglishCategoryCount]=useState<number|null>(null);
@@ -190,7 +215,7 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
     ja: { en: "アメリカ英語とイギリス英語の物語・会話", zh: "日常で使える語彙と標準中国語", ja: "短い物語で学ぶ自然な東京の日本語" },
   };
   return <div className="language-home">
-    <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div></header>
+    <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div><MobileHeaderActions locale={locale} onLocale={onLocale}/></header>
     <main className="landing-main">
       <div className="landing-badge"><Headphones size={16} /> {t("landingBadge")}</div>
       <h1>{t("chooseTitle")}</h1>
@@ -232,6 +257,7 @@ function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { l
       <LocaleSelect locale={locale} onLocale={onLocale} />
       <AccountMenu locale={locale} />
     </div>
+    <MobileHeaderActions locale={locale} onLocale={onLocale} extraAction={{ label: translate(locale, labels[language]), onClick: onDictation }}/>
   </header>;
 }
 
@@ -485,7 +511,7 @@ function PracticePage({ lesson, progress, onProgress, locale, onLocale, onHome, 
         <button className="back-link" onClick={onBack}><ArrowLeft size={18} /> {t("backLibrary")}</button>
         <div className="practice-title"><span>{lesson.emoji}</span><div><b>{lesson.number}. {lesson.title}</b><small><span className={`level-dot ${levelClass[lesson.level]}`} />{lesson.level} · {t("voice")} {lesson.accent}</small></div></div>
         <div className="header-progress"><span><b>{lessonDone}</b> / {lesson.sentences.length} {t("sentences")}</span><div><i style={{ width: `${percent}%` }} /></div></div>
-        <div className="practice-user-actions"><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div>
+        <div className="practice-user-actions"><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div><div className="practice-mobile-actions"><MobileHeaderActions locale={locale} onLocale={onLocale}/></div>
       </header>
 
       <main className="practice-main">

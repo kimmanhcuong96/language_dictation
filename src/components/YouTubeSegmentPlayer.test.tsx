@@ -16,6 +16,7 @@ describe("YouTubeSegmentPlayer", () => {
     Object.defineProperty(window,"YT",{configurable:true,value:{Player}});
     const view=render(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={1000} endMs={2000} locale="en"/>);
     await waitFor(()=>expect(Player).toHaveBeenCalledTimes(1));
+    expect(Player).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({host:"https://www.youtube.com"}));
     view.rerender(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={3000} endMs={4000} locale="en"/>);
     expect(Player).toHaveBeenCalledTimes(1);
   });

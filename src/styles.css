@@ -875,3 +875,115 @@ html[data-theme="dark"] ::selection{background:#35694b;color:#f5fff8}
 html[data-theme="dark"] .sentence-comments{border-color:var(--dark-border);background:var(--dark-surface-raised);box-shadow:0 14px 36px #0000002e}html[data-theme="dark"] .sentence-comment-form textarea,html[data-theme="dark"] .sentence-comment-list>li>div:last-child{border-color:var(--dark-border);background:var(--dark-surface);color:var(--dark-text)}html[data-theme="dark"] .sentence-comment-list p,html[data-theme="dark"] .sentence-comment-signin p{color:var(--dark-text-muted)}html[data-theme="dark"] .sentence-comment-signin{background:#1a3826}html[data-theme="dark"] .sentence-comment-signin button,html[data-theme="dark"] .sentence-comments-more,html[data-theme="dark"] .sentence-comment-error button{border-color:var(--dark-border-strong);background:var(--dark-control);color:#91dfae}
 @media(max-width:650px){.sentence-comments{padding:16px}.sentence-comment-signin{align-items:flex-start;flex-direction:column}.sentence-comment-signin button{width:100%}.sentence-comment-list time{display:none}}
 .comment-moderation-list{display:grid;gap:1rem}.comment-moderation-list article{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1rem}.comment-moderation-list article>header{display:flex;justify-content:space-between;gap:1rem}.comment-moderation-list article>header span{display:flex;align-items:center;gap:.5rem}.comment-moderation-list blockquote{margin:.75rem 0;padding:.65rem;border-left:3px solid var(--border);opacity:.8}.comment-moderation-list article>button{margin-left:auto;display:block}
+
+/* Mobile headers: preserve touch targets, hide secondary links, and keep the
+   lesson title from competing with account controls for horizontal space. */
+@media(max-width:780px){
+  .landing-header{height:64px;padding:0 16px;gap:10px}
+  .landing-actions{min-width:0;gap:5px}
+  .landing-actions .platform-link{display:none}
+  .landing-actions .leaderboard-button,
+  .landing-actions .theme-toggle,
+  .landing-actions .locale-select,
+  .landing-actions .login-button{width:38px;min-width:38px;height:38px;flex:0 0 38px;padding:0;justify-content:center}
+  .landing-actions .leaderboard-button span{display:none}
+  .landing-actions .login-button{font-size:0}
+  .landing-actions .locale-name,
+  .landing-actions .locale-trigger>svg{display:none}
+  .landing-actions .locale-trigger{min-height:38px;padding:0 9px;justify-content:center}
+  .landing-actions .locale-value{gap:0}
+  .learning-header .learning-brand{gap:8px;min-width:0}
+  .learning-header .dictation-button{width:38px;height:38px;flex:0 0 38px;padding:0;justify-content:center}
+  .learning-header .dictation-button span{display:none}
+
+  .practice-header{height:64px;padding:0 12px;grid-template-columns:35px minmax(0,1fr) auto;gap:8px}
+  .practice-header>.logo-button,.practice-header>.header-progress{display:none}
+  .practice-header .back-link{width:35px;height:38px;padding:0;justify-content:center}
+  .practice-title{min-width:0;justify-self:stretch;gap:8px}
+  .practice-title>span{width:32px;height:32px;flex:0 0 32px}
+  .practice-title>div{min-width:0}
+  .practice-title b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .practice-title small{display:none}
+  .practice-user-actions{grid-column:3;min-width:0;gap:5px}
+  .practice-user-actions .locale-select{display:none}
+  .practice-user-actions .theme-toggle{width:38px;height:38px;flex:0 0 38px}
+}
+
+@media(max-width:420px){
+  .landing-header{padding:0 12px;gap:6px}
+  .landing-actions{gap:3px}
+  .practice-header{padding:0 10px;gap:5px}
+  .practice-title{gap:6px}
+  .practice-title>span{display:none}
+}
+
+/* Keep every desktop action available on mobile. Action rows scroll sideways
+   instead of hiding controls or labels when horizontal space is limited. */
+@media(max-width:780px){
+  .landing-header{height:auto;min-height:64px;padding-block:10px;align-items:flex-start;flex-direction:column}
+  .landing-actions{width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;gap:8px;padding-bottom:2px}
+  .landing-actions .platform-link{display:flex}
+  .landing-actions .leaderboard-button{width:auto;min-width:0;flex:0 0 auto;padding:0 12px}
+  .landing-actions .leaderboard-button span{display:inline}
+  .landing-actions .theme-toggle{width:42px;min-width:42px;height:42px;flex:0 0 42px}
+  .landing-actions .locale-select{width:156px;min-width:156px;flex:0 0 156px}
+  .landing-actions .locale-name,.landing-actions .locale-trigger>svg{display:inline}
+  .landing-actions .locale-trigger{min-height:42px;padding:0 12px;justify-content:space-between}
+  .landing-actions .locale-value{gap:8px}
+  .landing-actions .login-button{width:auto;min-width:0;flex:0 0 auto;padding:0 12px;font-size:11px}
+  .landing-actions .account-pill{width:auto;max-width:190px;height:42px;padding:3px}
+  .landing-actions .account-trigger{width:auto;height:34px;padding:0 8px 0 0}
+  .landing-actions .account-trigger-name,.landing-actions .account-quick-logout{display:grid}
+  .landing-actions .account-trigger-name{display:block}
+  .learning-header .dictation-button{width:auto;height:38px;flex:0 0 auto;padding:0 12px}
+  .learning-header .dictation-button span{display:inline}
+
+  .practice-header{height:auto;min-height:64px;padding:8px 12px;grid-template-columns:35px minmax(0,1fr);grid-template-areas:"back title" "actions actions";gap:8px}
+  .practice-header .back-link{grid-area:back}
+  .practice-title{grid-area:title;grid-column:auto;grid-row:auto}
+  .practice-user-actions{grid-area:actions;grid-column:auto;width:100%;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;justify-content:flex-start;gap:8px;padding-bottom:2px}
+  .practice-user-actions .locale-select{display:block;width:156px;min-width:156px;flex:0 0 156px}
+  .practice-user-actions .theme-toggle{width:42px;height:42px;flex:0 0 42px}
+  .practice-user-actions .account-pill{width:auto;max-width:190px;height:42px;padding:3px}
+  .practice-user-actions .account-trigger{width:auto;height:34px;padding:0 8px 0 0}
+  .practice-user-actions .account-trigger-name,.practice-user-actions .account-quick-logout{display:grid}
+  .practice-user-actions .account-trigger-name{display:block}
+}
+
+@media(max-width:420px){
+  .landing-header .logo>span:last-child{display:inline}
+  .landing-actions{gap:8px}
+}
+
+/* Mobile uses an overflow menu rather than a horizontal action strip: the
+   primary account/theme controls stay visible, while every secondary desktop
+   action remains one tap away in a labelled, keyboard-dismissible menu. */
+.mobile-header-actions,.practice-mobile-actions{display:none}
+@media(max-width:780px){
+  .landing-header{height:64px;min-height:64px;padding:0 16px;flex-direction:row;align-items:center;justify-content:space-between}
+  .landing-actions,.practice-user-actions{display:none}
+  .landing-header>.mobile-header-actions{display:flex}
+  .mobile-header-actions{position:relative;align-items:center;gap:6px}
+  .mobile-header-more{width:38px;height:38px;display:grid;place-items:center;padding:0;border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);cursor:pointer}
+  .mobile-header-more:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+  .mobile-header-menu{position:absolute;z-index:60;top:calc(100% + 8px);right:0;width:min(320px,calc(100vw - 24px));display:grid;gap:7px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);box-shadow:0 16px 38px #17201926}
+  .mobile-header-menu .platform-link,.mobile-header-menu .leaderboard-button,.mobile-header-menu-action{width:100%;min-height:40px;display:flex;align-items:center;gap:9px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:700 11px "Manrope";text-decoration:none;cursor:pointer}
+  .mobile-header-menu .leaderboard-button{justify-content:flex-start;background:#f5e7c8;color:#684e20;border-color:#e8d4a5}
+  .mobile-header-menu .platform-link-talk{background:#e8f4f5;color:#215565;border-color:#c9e3e8}
+  .mobile-header-menu .platform-link-write{background:#f8eee5;color:#87572a;border-color:#ead5bf}
+  .mobile-header-menu .locale-select{width:100%;min-width:0}
+  .mobile-header-menu .locale-trigger{min-height:40px}
+  .practice-header{height:64px;min-height:64px;padding:0 12px;grid-template-columns:35px minmax(0,1fr) auto;grid-template-areas:none;gap:8px}
+  .practice-header .back-link{grid-area:auto}
+  .practice-title{grid-area:auto;grid-column:2;grid-row:1}
+  .practice-mobile-actions{display:block;grid-column:3;grid-row:1}
+  .practice-mobile-actions .mobile-header-actions{display:flex}
+  .practice-mobile-actions .mobile-header-menu{right:0}
+}
+html[data-theme="dark"] .mobile-header-more{border-color:#ffffff14;background:#ffffff08;color:var(--dark-muted)}
+html[data-theme="dark"] .mobile-header-menu{border-color:var(--dark-border);background:var(--dark-surface-raised);box-shadow:0 18px 42px #0008}
+html[data-theme="dark"] .mobile-header-menu .platform-link,html[data-theme="dark"] .mobile-header-menu-action{border-color:var(--dark-border);background:var(--dark-surface-muted);color:var(--dark-text)}
+html[data-theme="dark"] .mobile-header-menu .leaderboard-button{background:#3a301d;color:#f1cf79;border-color:#655332}
+html[data-theme="dark"] .mobile-header-menu .platform-link-talk{background:#18323a;color:#9ad8e7;border-color:#315e68}
+html[data-theme="dark"] .mobile-header-menu .platform-link-write{background:#37291e;color:#efc999;border-color:#66472e}
+@media(max-width:420px){.landing-header{padding:0 12px}.landing-header .logo>span:last-child{display:none}.mobile-header-actions{gap:4px}}
