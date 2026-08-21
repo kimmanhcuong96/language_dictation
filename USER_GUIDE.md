@@ -1,6 +1,6 @@
 # Hướng dẫn quản lý nội dung Me2Listen
 
-Tài liệu này dành cho người quản lý nội dung. Phiên bản hiện tại nhập bài nghe English đã được chuẩn bị sẵn dưới dạng MP3 + SRT chuẩn; hệ thống không dùng AI để tạo nội dung hoặc timestamp.
+Tài liệu này dành cho người quản lý nội dung. Bài nghe English có 3 nguồn nhập: **Nhập bằng AI** (căn timestamp tự động từ transcript có sẵn), **Nhập không dùng AI** (dùng MP3 + SRT chuẩn đã có timestamp) và **nhập YouTube** (dùng video ID + SRT, xem [YOUTUBE_IMPORT.md](./YOUTUBE_IMPORT.md)). Dù chọn nguồn nào, hệ thống không tự sinh transcript hay dịch máy — nội dung câu luôn lấy từ transcript/SRT do người quản lý cung cấp.
 
 ## 1. Thành phần và nơi lưu
 
@@ -96,9 +96,9 @@ Không thêm số thứ tự đầu dòng. Transcript tối đa 50.000 ký tự 
 ## 4. Import lesson
 
 1. Đăng nhập bằng tài khoản nằm trong `ADMIN_EMAILS`.
-2. Mở menu tài khoản → **Quản lý nội dung** để vào dashboard `#/admin`.
-3. Chọn thẻ **Nhập bài học**. Có thể mở trực tiếp `#/admin/listening` nếu cần.
-4. Chọn **Nhập bằng AI** hoặc **Nhập không dùng AI**. Nhãn có thể hiển thị bằng `vi`, `en`, `zh` hoặc `ja` theo ngôn ngữ giao diện đang chọn.
+2. Mở menu tài khoản → **Quản lý nội dung** để vào dashboard `/admin`.
+3. Chọn thẻ **Nhập bài học**. Có thể mở trực tiếp `/admin/listening` nếu cần.
+4. Chọn **Nhập bằng AI**, **Nhập không dùng AI**, hoặc chọn nguồn **YouTube** trong màn hình nhập từng bài/batch. Nhãn có thể hiển thị bằng `vi`, `en`, `zh` hoặc `ja` theo ngôn ngữ giao diện đang chọn.
 
 ### 4.1. Nhập bằng AI
 
@@ -174,7 +174,7 @@ Sau khi lesson được publish, người học đã đăng nhập có thể g�
 
 Để kiểm duyệt:
 
-1. Mở dashboard `#/admin`.
+1. Mở dashboard `/admin`.
 2. Chọn **Kiểm duyệt bản dịch**.
 3. So sánh câu gốc và bản dịch.
 4. Chọn **Duyệt** hoặc **Từ chối** cho từng câu.

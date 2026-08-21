@@ -1,6 +1,6 @@
 # Lesson and translation import
 
-The Admin import page at `#/admin/listening` has two independent workflows.
+The Admin import page at `/admin/listening` has two independent workflows.
 
 ## Lesson package import
 

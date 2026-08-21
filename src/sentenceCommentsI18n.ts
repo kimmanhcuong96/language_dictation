@@ -19,7 +19,6 @@ const en = {
   postError: "The comment could not be posted.",
   rateLimited: "You are commenting too quickly. Please wait and try again.",
   report: "Report comment",
-  reportConfirm: "Report this comment for moderator review?",
   reportReason: "Why are you reporting this comment? (optional)",
   reportSuccess: "Thank you. The comment was reported.",
   reportError: "The comment could not be reported.",
@@ -31,7 +30,6 @@ type Messages = Record<SentenceCommentsMessageKey, string>;
 
 const vi: Messages = {
   report: "Báo cáo bình luận",
-  reportConfirm: "Gửi bình luận này cho quản trị viên xem xét?",
   reportReason: "Vì sao bạn báo cáo bình luận này? (không bắt buộc)",
   reportSuccess: "Cảm ơn bạn. Bình luận đã được báo cáo.",
   reportError: "Không thể báo cáo bình luận.",
@@ -57,7 +55,6 @@ const vi: Messages = {
 
 const zh: Messages = {
   report: "举报评论",
-  reportConfirm: "将此评论提交管理员审核？",
   reportReason: "为什么举报此评论？（可选）",
   reportSuccess: "谢谢。评论已举报。",
   reportError: "无法举报评论。",
@@ -83,7 +80,6 @@ const zh: Messages = {
 
 const ja: Messages = {
   report: "コメントを報告",
-  reportConfirm: "このコメントを管理者の確認用に報告しますか？",
   reportReason: "このコメントを報告する理由は何ですか？（任意）",
   reportSuccess: "ありがとうございます。報告が送信されました。",
   reportError: "コメントを報告できませんでした。",

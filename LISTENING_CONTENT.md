@@ -1,14 +1,14 @@
 # Listening lesson import
 
-1. Apply all migrations through `db/migrations/0019_durable_lesson_import_queue.sql`.
-2. Configure `DATABASE_URL`, Google OAuth credentials, `ADMIN_EMAILS`, and the `LISTENING_AUDIO` R2 binding.
+1. Apply all migrations in `db/migrations/` (`corepack pnpm db:migrate`, or `npx wrangler d1`-style tooling is **not** used — see [DATABASE_SETUP.md](./DATABASE_SETUP.md), the project runs on Neon Postgres). The durable import queue schema lands in `0019_durable_lesson_import_queue.sql`; slug reservation (referenced below) requires the later `0022_lesson_import_slug_reservations.sql`, so do not stop partway through.
+2. Configure `DATABASE_URL`, Google OAuth credentials, `ADMIN_EMAILS`, and the `LISTENING_AUDIO` R2 binding (bucket `me2listen-audio` in `wrangler.jsonc`).
 3. Create the import queues once before the first deployment:
 
    ```bash
    npx wrangler queues create me2listen-lesson-import
    ```
 
-4. Deploy the Worker, then open `#/admin/listening` as an administrator.
+4. Deploy the Worker, then open `/admin/listening` as an administrator.
 
 Confirmed imports run through Cloudflare Queues. Delivery is idempotent and retried; a one-minute outbox recovery trigger republishes jobs if a request is interrupted between the database write and Queue publication. Cloudflare automatically creates the configured dead-letter queue. After retries are exhausted, the recovery trigger records the item as failed instead of leaving it in `PROCESSING`.
 

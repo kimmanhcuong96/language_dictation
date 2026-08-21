@@ -1,6 +1,6 @@
 # Import lesson không dùng AI
 
-Màn hình `#/admin/listening` có hai chế độ độc lập: **Nhập bằng AI** và **Nhập không dùng AI**. Tên nút tự đổi theo ngôn ngữ giao diện (`vi`, `en`, `zh`, `ja`); tên lesson, section và transcript không bị dịch.
+Màn hình `/admin/listening` có hai chế độ độc lập: **Nhập bằng AI** và **Nhập không dùng AI**. Tên nút tự đổi theo ngôn ngữ giao diện (`vi`, `en`, `zh`, `ja`); tên lesson, section và transcript không bị dịch.
 
 ## Chuẩn bị dữ liệu
 

@@ -1,6 +1,6 @@
 # Import bằng SRT chuẩn
 
-SRT hiện được dùng trong chế độ **Nhập không dùng AI** tại `#/admin/listening`. Luồng dán SRT hoặc nhập riêng từng lesson đã được thay bằng một batch pipeline duy nhất.
+SRT hiện được dùng trong chế độ **Nhập không dùng AI** tại `/admin/listening`. Luồng dán SRT hoặc nhập riêng từng lesson đã được thay bằng một batch pipeline duy nhất.
 
 Mỗi lesson cần đúng một cặp cùng basename:
 
