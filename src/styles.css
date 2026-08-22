@@ -352,7 +352,14 @@ html[data-theme="dark"] .transcript-translation-picker{color:var(--dark-text-mut
 }
 .translation-only-import h2{margin:10px 0 0}.translation-only-import fieldset{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(220px,1fr) auto;gap:12px;align-items:end;padding:14px;border:1px solid var(--line);border-radius:10px}.translation-only-import fieldset>button,.translation-only-import>button[type="button"]{display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px}.translation-validation{grid-column:1/-1}.translation-validation.valid{color:#337554}.translation-validation.invalid{color:#b54c3e}.admin-system .translation-only-import fieldset{border-color:var(--admin-border)}
 @media(max-width:650px){.translation-only-import fieldset{grid-template-columns:1fr}.translation-validation{grid-column:1}}
-.media-lesson-template{margin:0 0 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#111}.youtube-segment-player{display:grid;gap:12px}.youtube-player-frame{width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;background:#000}.youtube-player-frame iframe{width:100%;height:100%;border:0}.youtube-controls{margin:0;background:#fff}.admin-system .media-lesson-template{border-color:var(--admin-border);background:var(--admin-surface-2);color:var(--admin-text)}.admin-system .youtube-controls{background:var(--admin-surface);color:var(--admin-text)}
+.media-lesson-template{margin:0 0 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}.youtube-segment-player{display:grid;gap:12px}.youtube-player-shell{position:relative;border-radius:8px;overflow:hidden}.youtube-player-frame{width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;background:#000}.youtube-player-frame iframe{width:100%;height:100%;border:0}.youtube-controls{margin:0;background:#fff}.youtube-controls .play-main{flex:0 0 47px;width:47px;height:47px;box-shadow:none}.youtube-controls .play-main svg{width:22px;height:22px}.admin-system .media-lesson-template{border-color:var(--admin-border);background:var(--admin-surface-2);color:var(--admin-text)}.admin-system .youtube-controls{background:var(--admin-surface);color:var(--admin-text)}
+.youtube-video-toolbar{display:flex;justify-content:flex-start}
+.youtube-video-switch{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font:700 12px "Manrope";cursor:pointer;user-select:none;transition:.15s color}
+.youtube-video-switch:hover{color:var(--ink)}
+.youtube-video-switch:has(input:focus-visible){outline:3px solid var(--focus-ring);outline-offset:2px;border-radius:6px}
+.youtube-video-cover{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;background:var(--brand-soft);color:var(--brand-strong)}
+.youtube-video-cover svg{opacity:.85}
+.youtube-video-cover span{max-width:280px;color:var(--ink);font-size:13px;line-height:1.5}
 /* YouTube lessons only: video sits beside the practice card inside its own wrapper so the learner can watch and type at once. mp3 lessons never render .media-lesson-layout, so this never touches their layout.
    The sticky video's containing block is this wrapper (not the whole page), so it stops exactly at the bottom of the card and can never drift over .sentence-comments below. */
 .media-lesson-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,1fr);grid-template-areas:". header" "video card";gap:0 28px;align-items:start;margin-bottom:18px}
@@ -882,7 +889,7 @@ html[data-theme="dark"] :is(.lesson-toolbar-error,.progress-reset-error,.setting
 html[data-theme="dark"] .speech-recognition-status{color:#83d6a2}
 html[data-theme="dark"] .speech-recognition-status.error{color:#ee9b93}
 
-html[data-theme="dark"] .media-lesson-template{border-color:#303d49;background:#090d12;box-shadow:0 12px 32px #0005}
+html[data-theme="dark"] .media-lesson-template{border-color:#303d49;background:var(--paper);box-shadow:0 12px 32px #0005}
 html[data-theme="dark"] .youtube-controls{border:1px solid #303d49;background:#111820}
 html[data-theme="dark"] .lesson-audio-state button{
   border-color:#3d4d5b;

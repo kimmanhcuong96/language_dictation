@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw } from "lucide-react";
+import { EyeOff, Headphones, Pause, Play, RotateCcw } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { lessonT } from "../lessonI18n";
 import { createPlaybackSessionController } from "../lib/playbackSession";
@@ -81,11 +81,14 @@ interface Props {
 }
 
 const formatTime = (seconds: number) => { const whole = Math.max(0, Math.floor(seconds)); return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`; };
+const HIDE_VIDEO_STORAGE_KEY = "me2listen-hide-youtube-video";
 
 export const YouTubeSegmentPlayer = forwardRef<YouTubeSegmentPlayerHandle, Props>(function YouTubeSegmentPlayer({ videoId, startMs, endMs, locale, playbackRate = 1, repeat = false, repeatDelayMs = 0, showControls = true, onError, onTimeUpdate, onPlaybackComplete, onPlayingChange }, ref) {
   const containerRef = useRef<HTMLDivElement>(null),playerRef=useRef<YouTubePlayerApi|undefined>(undefined),timerRef=useRef<number|undefined>(undefined),sessionRef=useRef(createPlaybackSessionController());
   const boundsRef=useRef({startMs,endMs}),rateRef=useRef(playbackRate),repeatRef=useRef(repeat),delayRef=useRef(repeatDelayMs),timeUpdateRef=useRef(onTimeUpdate),completionRef=useRef(onPlaybackComplete),playingChangeRef=useRef(onPlayingChange),segmentRepeatRef=useRef(repeat),monitorRef=useRef<(sessionId:number,segmentEndMs:number)=>void>(undefined);
   const [ready,setReady]=useState(false),[playing,setPlaying]=useState(false),[current,setCurrent]=useState(0),[error,setError]=useState(false),[activeBounds,setActiveBounds]=useState({startMs,endMs});
+  const [hideVideo,setHideVideo]=useState(()=>{try{return localStorage.getItem(HIDE_VIDEO_STORAGE_KEY)==="true";}catch{return false;}});
+  const toggleHideVideo=()=>setHideVideo(value=>{const next=!value;try{localStorage.setItem(HIDE_VIDEO_STORAGE_KEY,String(next));}catch{/* ignore storage errors (private mode, quota) */}return next;});
   boundsRef.current={startMs,endMs};rateRef.current=playbackRate;repeatRef.current=repeat;delayRef.current=repeatDelayMs;timeUpdateRef.current=onTimeUpdate;completionRef.current=onPlaybackComplete;playingChangeRef.current=onPlayingChange;
   const setPlayingState=(value:boolean)=>{setPlaying(value);playingChangeRef.current?.(value);};
   const clearTimer=()=>{if(timerRef.current!==undefined)window.clearTimeout(timerRef.current);timerRef.current=undefined;};
@@ -105,5 +108,16 @@ export const YouTubeSegmentPlayer = forwardRef<YouTubeSegmentPlayerHandle, Props
   useEffect(()=>{if(!ready)return;const interval=window.setInterval(()=>{const player=playerRef.current;if(!player)return;const time=player.getCurrentTime();setCurrent(Math.max(0,time-boundsRef.current.startMs/1000));timeUpdateRef.current?.(time*1000);},400);return()=>window.clearInterval(interval);},[ready]);
   useEffect(()=>{if(ready)playerRef.current?.setPlaybackRate(playbackRate);},[playbackRate,ready]);
   const duration=Math.max(0,(activeBounds.endMs-activeBounds.startMs)/1000);
-  return <div className={`youtube-segment-player${error?" has-error":""}`}><div className="youtube-player-frame" ref={containerRef}/>{showControls&&<div className="segment-player youtube-controls"><button type="button" className={`play-main ${playing?"playing":""}`} onClick={toggle} disabled={!ready||error} aria-label={lessonT(locale,playing?"pauseSentence":"playSentence")}>{playing?<Pause size={27} fill="currentColor"/>:<Play size={29} fill="currentColor"/>}</button><input aria-label={lessonT(locale,"seekSentence")} type="range" min="0" max={Math.max(duration,.01)} step="0.1" value={Math.min(current,duration)} disabled={!ready||error} onChange={event=>{const offset=Number(event.target.value);setCurrent(offset);const absoluteMs=activeBounds.startMs+offset*1000;playerRef.current?.seekTo(absoluteMs/1000,true);timeUpdateRef.current?.(absoluteMs);}}/><span className="audio-time">{formatTime(current)} / {formatTime(duration)}</span><button type="button" className="audio-replay-button" onClick={replay} disabled={!ready||error} aria-label={lessonT(locale,"repeatSentence")}><RotateCcw size={16}/></button>{error&&<span className="audio-error" role="alert">{lessonT(locale,"audioConnectionError")}</span>}</div>}</div>;
+  return <div className={`youtube-segment-player${error?" has-error":""}`}>
+    <div className="youtube-video-toolbar">
+      <label className="youtube-video-switch">
+        <EyeOff size={15} aria-hidden="true"/><span>{lessonT(locale,"hideVideo")}</span>
+        <span className="switch"><input type="checkbox" checked={hideVideo} onChange={toggleHideVideo}/><i/></span>
+      </label>
+    </div>
+    <div className="youtube-player-shell">
+      <div className="youtube-player-frame" ref={containerRef} inert={hideVideo}/>
+      {hideVideo&&<div className="youtube-video-cover" role="status"><Headphones size={26} aria-hidden="true"/><span>{lessonT(locale,"videoHiddenMessage")}</span></div>}
+    </div>
+    {showControls&&<div className="segment-player youtube-controls"><button type="button" className={`play-main ${playing?"playing":""}`} onClick={toggle} disabled={!ready||error} aria-label={lessonT(locale,playing?"pauseSentence":"playSentence")}>{playing?<Pause size={27} fill="currentColor"/>:<Play size={29} fill="currentColor"/>}</button><input aria-label={lessonT(locale,"seekSentence")} type="range" min="0" max={Math.max(duration,.01)} step="0.1" value={Math.min(current,duration)} disabled={!ready||error} onChange={event=>{const offset=Number(event.target.value);setCurrent(offset);const absoluteMs=activeBounds.startMs+offset*1000;playerRef.current?.seekTo(absoluteMs/1000,true);timeUpdateRef.current?.(absoluteMs);}}/><span className="audio-time">{formatTime(current)} / {formatTime(duration)}</span><button type="button" className="audio-replay-button" onClick={replay} disabled={!ready||error} aria-label={lessonT(locale,"repeatSentence")}><RotateCcw size={16}/></button>{error&&<span className="audio-error" role="alert">{lessonT(locale,"audioConnectionError")}</span>}</div>}</div>;
 });
