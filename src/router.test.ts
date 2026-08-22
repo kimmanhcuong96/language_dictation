@@ -28,6 +28,8 @@ describe("application routing", () => {
     expect(viewPath({ page: "adminComments" })).toBe("/admin/listening/comments");
     expect(resolveAppView("/admin/leaderboard", "")).toEqual({ page: "adminLeaderboard" });
     expect(viewPath({ page: "adminLeaderboard" })).toBe("/admin/leaderboard");
+    expect(resolveAppView("/admin/users", "")).toEqual({ page: "adminUsers" });
+    expect(viewPath({ page: "adminUsers" })).toBe("/admin/users");
   });
 
   it("leaves a canonical lesson before navigating back to a section", () => {

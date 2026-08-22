@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { decodeSentenceCommentCursor, encodeSentenceCommentCursor, normalizeSentenceComment } from "../src/lib/sentenceComments";
 
-interface CommentSession { id: string }
+interface CommentSession { id: string; is_blocked?: boolean }
 type NeonSql = ReturnType<typeof neon>;
 export type CommentSqlFactory = (env: Env) => NeonSql;
 const PAGE_SIZE=20,PAGE_SIZE_MAX=50,RATE_LIMIT=10,RATE_WINDOW_MINUTES=10,MAX_BODY_BYTES=4*1024;
@@ -11,7 +11,7 @@ export async function routeListeningComments(request:Request,env:Env,url:URL,ses
   try{
     const sentence=url.pathname.match(/^\/api\/listening\/sentences\/([\w-]+)\/comments$/u);
     if(request.method==="GET"&&sentence)return listComments(sqlFactory(env),url,sentence[1],session);
-    if(request.method==="POST"&&sentence){const denied=guardMutation(session,mutationValid);return denied??createComment(request,sqlFactory(env),session!,sentence[1]);}
+    if(request.method==="POST"&&sentence){const denied=guardMutation(session,mutationValid);if(denied)return denied;if(session!.is_blocked)return json({error:"user_blocked"},403);return createComment(request,sqlFactory(env),session!,sentence[1]);}
     const report=url.pathname.match(/^\/api\/listening\/comments\/([\w-]+)\/reports$/u);
     if(request.method==="POST"&&report){const denied=guardMutation(session,mutationValid);return denied??reportComment(request,sqlFactory(env),session!,report[1]);}
     const comment=url.pathname.match(/^\/api\/listening\/comments\/([\w-]+)$/u);

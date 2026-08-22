@@ -52,6 +52,7 @@ import { useTheme } from "./theme";
 import { adminSystemT } from "./adminSystemI18n";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { LeaderboardSettingsPage } from "./components/admin/LeaderboardSettingsPage";
+import { UserManagementPage } from "./components/admin/UserManagementPage";
 import { createActiveStudyTimer } from "./lib/activeStudyTimer";
 
 type View = AppView;
@@ -115,6 +116,8 @@ function App() {
     <CommentModerationPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminLeaderboard" ? (
     <LeaderboardSettingsPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
+  ) : view.page === "adminUsers" ? (
+    <UserManagementPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
@@ -599,7 +602,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
       <div className="account-summary"><span className="mini-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><div><b>{auth.user.displayName}</b><small>{auth.user.email}</small></div></div>
       <button onClick={() => { setName(auth.user!.displayName); setEditing(true); }}><UserRound size={16} />{t("editName")}</button>
       {auth.user.isAdmin && <button onClick={() => { navigateToPath("/admin"); setOpen(false); }}><Library size={16} />{t("contentManagement")}</button>}
-      <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
+      <label className="ranking-privacy"><span><Trophy size={16} /><span><b>{t("publicRanking")}</b><small>{t("publicRankingHint")}</small></span></span><span className="switch"><input type="checkbox" checked={auth.user.leaderboardVisible} disabled={auth.user.isBlocked} onChange={(event) => void auth.setLeaderboardVisible(event.target.checked)} /><i /></span></label>
       <button className="logout-item" onClick={() => void auth.logout()}><LogOut size={16} />{t("logout")}</button>
     </div>}
     {editing && <div className="modal-backdrop" onMouseDown={() => setEditing(false)}><section className="modal name-modal" onMouseDown={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setEditing(false)} aria-label={t("closeDialog")}><X size={20} /></button><span className="overline">{t("editName").toUpperCase()}</span><h2>{t("displayName")}</h2><input aria-label={t("displayName")} value={name} maxLength={40} autoFocus onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveName(); }} />{error && <p className="form-error">{error}</p>}<div className="modal-actions"><button onClick={() => setEditing(false)}>{t("cancel")}</button><button className="primary-button" disabled={saving || [...name.trim()].length < 2} onClick={() => void saveName()}>{t("save")}</button></div></section></div>}

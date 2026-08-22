@@ -22,6 +22,12 @@ describe("listening comment routes",()=>{
     expect(await routeListeningComments(new Request(url,{method:"PATCH"}),env,url,{id:"user-1"},true)).toBeNull();
   });
 
+  it("prevents blocked users from creating comments before touching the database",async()=>{
+    const url=new URL("https://example.test/api/listening/sentences/sentence-1/comments"),{sql,factory}=factoryFor([]);
+    const response=await routeListeningComments(new Request(url,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}),env,url,{id:"user-1",is_blocked:true},true,false,factory);
+    expect(response?.status).toBe(403);expect(await response?.json()).toEqual({error:"user_blocked"});expect(sql).not.toHaveBeenCalled();
+  });
+
   it("enforces delete ownership in the database predicate",async()=>{
     const id="123e4567-e89b-12d3-a456-426614174000",url=new URL(`https://example.test/api/listening/comments/${id}`),{sql,factory}=factoryFor([[]]);
     const response=await routeListeningComments(new Request(url,{method:"DELETE"}),env,url,{id:"owner"},true,false,factory);

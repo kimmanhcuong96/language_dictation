@@ -8,6 +8,7 @@ export interface AccountUser {
   displayName: string;
   avatarUrl: string | null;
   leaderboardVisible: boolean;
+  isBlocked: boolean;
   isAdmin: boolean;
   listeningPreferences: ListeningPreferences;
   preferredTranslationLanguage: string;
@@ -51,6 +52,12 @@ export interface LeaderboardEntry {
 export type LeaderboardMetric = "study_time" | "translations";
 export type LeaderboardPeriod = "7d" | "30d";
 export interface LeaderboardSettings { study7DayLimit:number; study30DayLimit:number; translation7DayLimit:number; translation30DayLimit:number; updatedAt:string; }
+export interface AdminUserSummary {
+  id:string;email:string;displayName:string;avatarUrl:string|null;leaderboardVisible:boolean;isBlocked:boolean;isAdmin:boolean;
+  blockedAt:string|null;blockReason:string|null;blockedByName:string|null;createdAt:number;updatedAt:number;lastSeenAt:number|null;
+  commentCount:number;visibleCommentCount:number;completedLessonCount:number;studySeconds30d:number;approvedTranslationCount:number;
+}
+export interface AdminUsersPage { users:AdminUserSummary[];page:number;limit:number;total:number; }
 
 export interface AdminImportBatchItem {
   id: string;
@@ -128,6 +135,8 @@ interface AuthContextValue {
   adminModerateComment: (commentId:string,action:"hide"|"restore",reason:string) => Promise<void>;
   adminGetLeaderboardSettings: () => Promise<LeaderboardSettings>;
   adminUpdateLeaderboardSettings: (settings:Omit<LeaderboardSettings,"updatedAt">) => Promise<LeaderboardSettings>;
+  adminGetUsers: (input:{query?:string;status?:"all"|"active"|"blocked";page?:number}) => Promise<AdminUsersPage>;
+  adminModerateUser: (userId:string,action:"block"|"unblock",reason:string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -210,6 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     setLeaderboardVisible: async (visible) => {
       if (!csrf || !user) throw new Error("not_authenticated");
+      if (user.isBlocked) throw new Error("user_blocked");
       const result = await api<{ user: AccountUser }>("/api/me", { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf }, body: JSON.stringify({ displayName: user.displayName, leaderboardVisible: visible }) });
       setUser(result.user);
     },
@@ -273,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     getSentenceComments: async (sentenceId,cursor) => api(`/api/listening/sentences/${encodeURIComponent(sentenceId)}/comments${cursor?`?cursor=${encodeURIComponent(cursor)}`:""}`),
     createSentenceComment: async (sentenceId,body) => {
       if(!csrf||!user)throw new Error("not_authenticated");
+      if(user.isBlocked)throw new Error("user_blocked");
       const result=await api<{comment:SentenceComment}>(`/api/listening/sentences/${encodeURIComponent(sentenceId)}/comments`,{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({id:crypto.randomUUID(),body})});
       return result.comment;
     },
@@ -360,6 +371,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     adminUpdateLeaderboardSettings: async (settings) => {
       if(!csrf||!user?.isAdmin)throw new Error("forbidden");
       return (await api<{settings:LeaderboardSettings}>("/api/admin/leaderboard-settings",{method:"PATCH",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify(settings)})).settings;
+    },
+    adminGetUsers: async ({query="",status="all",page=1}) => {
+      if(!user?.isAdmin)throw new Error("forbidden");
+      return api<AdminUsersPage>(`/api/admin/users?q=${encodeURIComponent(query)}&status=${encodeURIComponent(status)}&page=${page}`);
+    },
+    adminModerateUser: async (userId,action,reason) => {
+      if(!csrf||!user?.isAdmin)throw new Error("forbidden");
+      await api(`/api/admin/users/${encodeURIComponent(userId)}/moderation`,{method:"PATCH",headers:{"Content-Type":"application/json","X-CSRF-Token":csrf},body:JSON.stringify({action,reason})});
     },
   }), [user, loading, csrf, sendActivity, sendListeningProgress]);
 

@@ -12,6 +12,7 @@ export interface LeaderboardSettings {
 }
 
 type Sql = ReturnType<typeof neon>;
+export type LeaderboardSqlFactory = (env:Env)=>Sql;
 const sqlFor = (env: Env) => neon(env.DATABASE_URL);
 
 export function rollingPeriodStart(period: LeaderboardPeriod, now = new Date()) {
@@ -19,13 +20,13 @@ export function rollingPeriodStart(period: LeaderboardPeriod, now = new Date()) 
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
-export async function getLeaderboard(env: Env, url: URL, currentUserId: string | null) {
+export async function getLeaderboard(env: Env, url: URL, currentUserId: string | null,sqlFactory:LeaderboardSqlFactory=sqlFor) {
   const metric = url.searchParams.get("metric") ?? "study_time";
   const period = url.searchParams.get("period") ?? "7d";
   if (metric !== "study_time" && metric !== "translations") return json({ error: "invalid_metric" }, 422);
   if (period !== "7d" && period !== "30d") return json({ error: "invalid_period" }, 422);
 
-  const sql = sqlFor(env);
+  const sql = sqlFactory(env);
   const settings = await loadLeaderboardSettings(sql);
   const limit = leaderboardLimit(settings, metric, period);
   const startsAt = rollingPeriodStart(period);
@@ -40,7 +41,7 @@ export async function getLeaderboard(env: Env, url: URL, currentUserId: string |
         SELECT ROW_NUMBER() OVER (ORDER BY totals.value DESC, users.created_at ASC, users.id ASC)::int AS rank,
           users.id AS user_id, users.display_name, users.avatar_url, totals.value
         FROM totals JOIN users ON users.id = totals.user_id
-        WHERE users.leaderboard_visible = TRUE
+        WHERE users.leaderboard_visible = TRUE AND users.is_blocked = FALSE
       )
       SELECT rank, user_id, display_name, avatar_url, value
       FROM ranked
@@ -60,7 +61,7 @@ export async function getLeaderboard(env: Env, url: URL, currentUserId: string |
         SELECT ROW_NUMBER() OVER (ORDER BY totals.value DESC, users.created_at ASC, users.id ASC)::int AS rank,
           users.id AS user_id, users.display_name, users.avatar_url, totals.value
         FROM totals JOIN users ON users.id = totals.user_id
-        WHERE users.leaderboard_visible = TRUE
+        WHERE users.leaderboard_visible = TRUE AND users.is_blocked = FALSE
       )
       SELECT rank, user_id, display_name, avatar_url, value
       FROM ranked

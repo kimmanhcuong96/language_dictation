@@ -12,7 +12,7 @@ import { parseProperNamesJson } from "../src/lib/properNamesImport";
 import { routeListeningComments } from "./listening-comments";
 import { routeListeningTranslations } from "./listening-translations";
 
-export interface ListeningSession { id: string; email: string; }
+export interface ListeningSession { id: string; email: string; is_blocked?: boolean; }
 const MAX_JSON_BYTES = 128 * 1024;
 const MAX_BATCH_REQUEST_BYTES = NON_AI_IMPORT_LIMITS.maxArchiveBytes + 2 * 1024 * 1024;
 class RequestBodyError extends Error { constructor(message: string, readonly status: number) { super(message); } }

@@ -1,4 +1,4 @@
-import { FileUp, Languages, Library, MessageSquareWarning, Trophy } from "lucide-react";
+import { FileUp, Languages, Library, MessageSquareWarning, Trophy, UsersRound } from "lucide-react";
 import { commentModerationT } from "../../commentModerationI18n";
 import { adminTranslationT } from "../../adminTranslationI18n";
 import { adminSystemT } from "../../adminSystemI18n";
@@ -7,6 +7,7 @@ import { navigateToPath } from "../../router";
 import type { UiLocale } from "../../types";
 import { AdminLayout } from "./AdminLayout";
 import { adminLeaderboardT } from "../../adminLeaderboardI18n";
+import { adminUsersT } from "../../adminUsersI18n";
 
 export function AdminDashboardPage({ locale, onSiteHome }: { locale: UiLocale; onSiteHome: () => void }) {
   const auth = useAuth();
@@ -20,6 +21,7 @@ export function AdminDashboardPage({ locale, onSiteHome }: { locale: UiLocale; o
     { path: "/admin/listening/translations", icon: Languages, title: adminTranslationT(locale,"title"), description: adminTranslationT(locale,"description") },
     { path: "/admin/listening/comments", icon: MessageSquareWarning, title: commentModerationT(locale,"title"), description: commentModerationT(locale,"description") },
     { path: "/admin/leaderboard", icon: Trophy, title: adminLeaderboardT(locale,"title"), description: adminLeaderboardT(locale,"description") },
+    { path: "/admin/users", icon: UsersRound, title: adminUsersT(locale,"title"), description: adminUsersT(locale,"description") },
   ];
 
   return <AdminLayout locale={locale} title={title} dashboard onSiteHome={onSiteHome}>
