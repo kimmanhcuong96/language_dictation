@@ -65,7 +65,7 @@ export function LessonImportPage({ onHome, locale }: { onHome: () => void; local
         setNewSectionCategoryId(current => current || result.categories[0]?.category_id || "");
       })
       .catch(reason => setError(toImportError(reason, "loadSectionsFailed")));
-    void getJson<{lessons:LessonOption[]}>("/api/listening/admin/lessons?status=all&limit=200")
+    void getJson<{lessons:LessonOption[]}>("/api/listening/admin/lessons?status=all&limit=2000")
       .then(result=>{setLessons(result.lessons);setTranslationLessonId(current=>current||result.lessons[0]?.id||"");})
       .catch(()=>setError({value:translationImportT(locale,"loadLessonsFailed"),fallback:"requestFailed"}));
   }, [auth.user?.isAdmin,locale]);

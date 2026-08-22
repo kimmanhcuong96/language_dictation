@@ -422,7 +422,7 @@ async function createAdminSection(request: Request, env: Env) {
 async function getAdminLessons(env: Env, url: URL) {
   const query = url.searchParams.get("q")?.trim() ?? "", exactPath = url.searchParams.get("path")?.trim() ?? "", language = url.searchParams.get("language") ?? "all", status = url.searchParams.get("status") ?? "all";
   if (exactPath.length > 400) return json({ error: "invalid_path" }, 422);
-  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
+  const limit = Math.min(2000, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
   const sql = sqlFor(env);
   const rows = await sql`SELECT l.id,l.slug,l.title,l.description,l.level,l.duration_ms,l.sentence_count,l.sort_order,l.source_filename,l.is_published,l.updated_at,l.audio_key,p.path,c.slug AS category_slug,c.name AS category_name,s.id AS section_id,s.title AS section_title,lang.code AS language_code FROM listening_lessons l JOIN listening_canonical_paths p ON p.lesson_id=l.id JOIN listening_sections s ON s.id=l.section_id JOIN listening_categories c ON c.id=s.category_id JOIN languages lang ON lang.id=c.language_id WHERE (${query}='' OR l.title ILIKE ${`%${query}%`} OR l.slug ILIKE ${`%${query}%`} OR p.path ILIKE ${`%${query}%`}) AND (${exactPath}='' OR p.path=${exactPath}) AND (${language}='all' OR lang.code=${language}) AND (${status}='all' OR (${status}='published' AND l.is_published=true) OR (${status}='draft' AND l.is_published=false)) ORDER BY lang.sort_order,c.sort_order,s.sort_order,l.sort_order,l.id LIMIT ${limit}`;
   return json({ lessons: rows });
