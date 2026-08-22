@@ -22,6 +22,43 @@ describe("YouTubeSegmentPlayer", () => {
     expect(Player).toHaveBeenCalledTimes(1);
   });
 
+  it("does not crash when the active sentence changes before the IFrame API signals onReady", async () => {
+    // The YouTube IFrame API's `new YT.Player()` call returns an object synchronously, but its
+    // playback methods (pauseVideo, etc.) are only guaranteed to exist once onReady fires.
+    const Player=vi.fn(function(){return {};});
+    Object.defineProperty(window,"YT",{configurable:true,value:{Player}});
+    const view=render(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={1000} endMs={2000} locale="en"/>);
+    await waitFor(()=>expect(Player).toHaveBeenCalledTimes(1));
+    expect(()=>view.rerender(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={3000} endMs={4000} locale="en"/>)).not.toThrow();
+  });
+
+  it("does not crash when the learner leaves the lesson before onReady", async () => {
+    const Player=vi.fn(function(){return {};});
+    Object.defineProperty(window,"YT",{configurable:true,value:{Player}});
+    const view=render(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={1000} endMs={2000} locale="en"/>);
+    await waitFor(()=>expect(Player).toHaveBeenCalledTimes(1));
+    expect(()=>view.unmount()).not.toThrow();
+  });
+
+  it("does not crash when the learner opens another video lesson before onReady", async () => {
+    const Player=vi.fn(function(){return {};});
+    Object.defineProperty(window,"YT",{configurable:true,value:{Player}});
+    const view=render(<YouTubeSegmentPlayer videoId="first-video" startMs={1000} endMs={2000} locale="en"/>);
+    await waitFor(()=>expect(Player).toHaveBeenCalledTimes(1));
+    expect(()=>view.rerender(<YouTubeSegmentPlayer videoId="second-video" startMs={1000} endMs={2000} locale="en"/>)).not.toThrow();
+  });
+
+  it("does not crash when a state change arrives before onReady while onTimeUpdate is wired up", async () => {
+    // The lesson screen always passes onTimeUpdate, so the optional call inside onStateChange does
+    // evaluate its argument in production — the player must therefore be a usable one.
+    let fireStateChange:((event:{data:number})=>void)|undefined;
+    const Player=vi.fn(function(_element:HTMLElement,options:{events:{onStateChange:(event:{data:number})=>void}}){fireStateChange=options.events.onStateChange;return {};});
+    Object.defineProperty(window,"YT",{configurable:true,value:{Player}});
+    render(<YouTubeSegmentPlayer videoId="dQw4w9WgXcQ" startMs={1000} endMs={2000} locale="en" onTimeUpdate={()=>{}}/>);
+    await waitFor(()=>expect(Player).toHaveBeenCalledTimes(1));
+    expect(()=>act(()=>fireStateChange?.({data:1}))).not.toThrow();
+  });
+
   it("completes only the active playback session", async () => {
     vi.useFakeTimers();
     let currentTime=0;
