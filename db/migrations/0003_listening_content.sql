@@ -114,7 +114,7 @@ ON CONFLICT(code) DO UPDATE SET name=EXCLUDED.name, native_name=EXCLUDED.native_
 INSERT INTO listening_categories(id, language_id, slug, name, sort_order, is_published)
 SELECT 'category-en-' || item.slug, l.id, item.slug, item.name, item.sort_order, TRUE
 FROM languages l
-CROSS JOIN (VALUES ('short-stories','Short Stories',1),('long-listening','Long Listening',2),('conversations','Conversations',3)) AS item(slug,name,sort_order)
+CROSS JOIN (VALUES ('short-stories','Short Stories',1),('long-listening','Long Listening',2),('conversations','Conversations',3),('podcast','Podcast',4),('ted-talks','TED Talks',5),('ielts-listening','IELTS Listening',6)) AS item(slug,name,sort_order)
 WHERE l.code='en'
 ON CONFLICT(language_id, slug) DO UPDATE SET name=EXCLUDED.name, sort_order=EXCLUDED.sort_order, is_published=TRUE, updated_at=now();
 

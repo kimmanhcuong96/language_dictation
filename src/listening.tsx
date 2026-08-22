@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Clock3, Headphones, Languages, Lightbulb, Mic, Pause, Play, RotateCcw, Search, Settings2, Star, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Clock3, GraduationCap, Headphones, Languages, Lightbulb, MessageCircle, Mic, Pause, Play, Presentation, RotateCcw, Search, Settings2, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useAuth, type SentenceTranslation, type TranslationLanguageOption } from "./auth";
 import { adminSystemT } from "./adminSystemI18n";
@@ -95,6 +95,8 @@ function LessonCompletionDialog({locale,lessonTitle,nextLessonName,busy,error,on
   </dialog>;
 }
 
+const topicIcons: Record<string, typeof BookOpen> = { "short-stories": BookOpen, "long-listening": Headphones, "conversations": MessageCircle, "podcast": Mic, "ted-talks": Presentation, "ielts-listening": GraduationCap };
+
 function CategoryList({manifest,locale,onHome}:{manifest?:LessonManifest;locale:UiLocale;onHome:()=>void}){
   const [categories,setCategories]=useState<Category[]>([]);
   useEffect(()=>{let active=true;void getJson<{categories:Category[]}>("/api/listening/categories?language=en").then(result=>{if(active)setCategories(result.categories);}).catch(()=>undefined);return()=>{active=false;};},[]);
@@ -102,7 +104,7 @@ function CategoryList({manifest,locale,onHome}:{manifest?:LessonManifest;locale:
   return <Shell wide locale={locale} onHome={onHome} title="English" breadcrumbs={[{label:translate(locale,"allTopics")}]}>
     {!items?<Loading locale={locale}/>:<section className="topics-catalog" aria-labelledby="topics-title">
       <header className="topics-heading"><span>{topicT(locale,"eyebrow")}</span><h1 id="topics-title">{translate(locale,"allTopics")}</h1><p>{topicT(locale,"intro")}</p></header>
-      {items.length?<ul className="topics-grid">{items.map(item=>{const path=`/en/${item.slug}`,style={"--topic-hue":item.hue} as CSSProperties;return <li key={item.slug}><a className="topic-card" href={pathHref(path)} onClick={event=>followRouteLink(event,path)} aria-label={`${topicT(locale,"openTopic")}: ${item.name}`}><span className="topic-cover" style={style} aria-hidden="true"><BookOpen size={22}/><b>{item.initials}</b></span><span className="topic-card-body"><span className="topic-title-row"><h2>{item.name}</h2><ArrowRight className="topic-card-arrow" size={18}/></span>{item.description&&<p>{item.description}</p>}<span className="topic-meta"><span><b>{topicT(locale,"levels")}</b>{formatLevelRange(item.levels,topicT(locale,"allLevels"))}</span><span><Headphones size={14}/><b>{item.lessonCount}</b>{translate(locale,"lessons")}</span></span></span></a></li>;})}</ul>:<div className="content-state">{translate(locale,"noLessons")}</div>}
+      {items.length?<ul className="topics-grid">{items.map(item=>{const path=`/en/${item.slug}`,style={"--topic-hue":item.hue} as CSSProperties,TopicIcon=topicIcons[item.slug]??BookOpen;return <li key={item.slug}><a className="topic-card" href={pathHref(path)} onClick={event=>followRouteLink(event,path)} aria-label={`${topicT(locale,"openTopic")}: ${item.name}`}><span className="topic-cover" style={style} aria-hidden="true"><TopicIcon size={22}/><b>{item.initials}</b></span><span className="topic-card-body"><span className="topic-title-row"><h2>{item.name}</h2><ArrowRight className="topic-card-arrow" size={18}/></span>{item.description&&<p>{item.description}</p>}<span className="topic-meta"><span><b>{topicT(locale,"levels")}</b>{formatLevelRange(item.levels,topicT(locale,"allLevels"))}</span><span><Headphones size={14}/><b>{item.lessonCount}</b>{translate(locale,"lessons")}</span></span></span></a></li>;})}</ul>:<div className="content-state">{translate(locale,"noLessons")}</div>}
     </section>}
   </Shell>;
 }

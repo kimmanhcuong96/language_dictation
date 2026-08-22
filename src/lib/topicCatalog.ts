@@ -23,7 +23,7 @@ export function buildTopicSummaries(lessons: LessonManifestItem[], language: str
     lessonCount: 0,
     levels: [],
     initials: topicInitials(category.name),
-    hue: stableHue(category.slug),
+    hue: topicHue(category.slug),
   });
   for (const lesson of lessons) {
     if (lesson.language !== language) continue;
@@ -34,7 +34,7 @@ export function buildTopicSummaries(lessons: LessonManifestItem[], language: str
       lessonCount: 0,
       levels: [],
       initials: topicInitials(lesson.categoryName),
-      hue: stableHue(lesson.categorySlug),
+      hue: topicHue(lesson.categorySlug),
     };
     current.lessonCount += 1;
     const level = lesson.level?.trim();
@@ -61,6 +61,12 @@ function compareLevels(left: string, right: string) {
 function topicInitials(name: string) {
   const words = name.trim().split(/\s+/u).filter(Boolean);
   return (words.length > 1 ? `${words[0][0]}${words[1][0]}` : words[0]?.slice(0, 2) ?? "EN").toUpperCase();
+}
+
+const HUE_OVERRIDES: Record<string, number> = { podcast: 205, "ted-talks": 285, "ielts-listening": 35 };
+
+function topicHue(slug: string) {
+  return HUE_OVERRIDES[slug] ?? stableHue(slug);
 }
 
 function stableHue(value: string) {
