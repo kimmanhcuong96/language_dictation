@@ -22,7 +22,6 @@ import { abortSpeechRecognition, classifyMicrophoneAccessError, classifySpeechRe
 import { buildLessonSections, collectLessonLevels, filterLessonSections } from "./lib/sectionCatalog";
 import { buildTopicSummaries, formatLevelRange } from "./lib/topicCatalog";
 import { findActiveTranscriptIndex, seekAndPlayTranscript } from "./lib/transcriptTracking";
-import { detectLikelyProperNouns } from "./lib/properNouns";
 import { createActiveStudyTimer } from "./lib/activeStudyTimer";
 
 const progressSavePending:Record<UiLocale,string>={vi:"Đã lưu trên thiết bị; tiến độ sẽ tự đồng bộ khi có kết nối.",en:"Saved on this device; progress will sync automatically when the connection returns.",zh:"已保存在此设备上；恢复连接后会自动同步进度。",ja:"この端末に保存しました。接続が戻ると進捗は自動的に同期されます。"};
@@ -188,7 +187,7 @@ function DictationLesson({manifest,lessonSlug,lessonPath,lessonStates,onLessonSt
     try{recognition.start();setSpeechListening(true);}catch{cancelSpeechRecognition();setSpeechError("unknown");}
   };
   const sentence=lesson.sentences[index],explicitProperNames=explicitProperNamesFromMetadata(sentence.metadata),lessonState=lessonStates[lesson.id]??{lessonId:lesson.id,starCount:0,isStarred:false,isCompleted:false},evaluation=evaluateAnswer({expected:sentence.transcript,actual:typed,language:"en"}),isDone=completed.has(sentence.id),accepted=isDone||revealed||(submitted&&evaluation.correct),percent=Math.round(completed.size/lesson.sentences.length*100),activeTranscriptIndex=findActiveTranscriptIndex(lesson.sentences,transcriptTimeMs),nextLesson=findNextLesson(manifest,lesson.id);
-  const properNouns=explicitProperNames??detectLikelyProperNouns(sentence.transcript);
+  const properNouns=explicitProperNames??[];
   const complete=async(firstTryCorrect=attempts===0)=>{if(isDone)return;setProgressError(null);const next=new Set(completed).add(sentence.id);setCompleted(next);localStorage.setItem(guestKey(lesson.id),JSON.stringify([...next]));if(next.size>=lesson.sentences.length)onLessonState(lesson.id,{isCompleted:true});if(auth.user){setSaving(true);try{await auth.saveListeningProgress({lessonId:lesson.id,sentenceId:sentence.id,position:sentence.position,attemptCount:attempts+1,firstTryCorrect,eventId:crypto.randomUUID(),durationSeconds:activeStudyTimerRef.current.elapsedSeconds()});}catch{setProgressError("save");}finally{setSaving(false);}}};
   const submit=()=>{if(!typed.trim())return;setSubmitted(true);if(evaluation.correct)void complete();else setAttempts(value=>value+1);};
   const moveToSentence=(targetIndex:number)=>{if(targetIndex<0||targetIndex>=lesson.sentences.length||targetIndex===index)return;setIndex(targetIndex);};
