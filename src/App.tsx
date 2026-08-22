@@ -625,6 +625,23 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
 
   if (auth.loading) return <span className="account-pill account-pill-loading" aria-hidden="true"><span className="account-trigger-avatar avatar-loading"/><span/></span>;
   if (!auth.user) return <button className="login-button" onClick={auth.login}><LogIn size={16} />{t("signIn")}</button>;
@@ -637,7 +654,7 @@ function AccountMenu({ locale }: { locale: UiLocale }) {
     finally { setSaving(false); }
   };
 
-  return <div className="account-wrap">
+  return <div ref={rootRef} className="account-wrap">
     <div className="account-pill">
       <button className="account-trigger" type="button" onClick={() => setOpen(!open)} aria-label={auth.user.displayName} aria-controls="account-popover" aria-expanded={open}><span className="account-trigger-avatar">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : initials}</span><span className="account-trigger-name">{auth.user.displayName}</span></button>
       <button className="account-quick-logout" type="button" title={t("logout")} aria-label={t("logout")} onClick={() => void auth.logout()}><LogOut size={16}/></button>
