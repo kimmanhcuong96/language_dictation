@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-const API_PROXY_TARGET = "https://me2listen.kimmanhcuong96.workers.dev";
+const API_PROXY_TARGET = "https://me2listen.com";
 
 export default defineConfig({
   plugins: [react()],

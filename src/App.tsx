@@ -249,7 +249,7 @@ function LearningHeader({ language, locale, onLocale, onHome, onDictation }: { l
   return <header className="landing-header learning-header">
     <div className="learning-brand">
       <button className="logo-home" onClick={onHome} aria-label={translate(locale,"logoHome")}><Logo /></button>
-      <button className="dictation-button" onClick={onDictation}><Headphones size={17} /><span>{translate(locale, labels[language])}</span></button>
+      <button className="dictation-button" type="button" aria-label={translate(locale,labels[language])} title={translate(locale,labels[language])} onClick={onDictation}><Headphones size={17} /><span>{translate(locale, labels[language])}</span></button>
     </div>
     <div className="landing-actions">
       <LeaderboardLauncher locale={locale} />

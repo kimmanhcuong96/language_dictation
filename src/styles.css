@@ -330,6 +330,17 @@ html[data-theme="dark"] .transcript-translation-picker{color:var(--dark-text-mut
 
 .lesson-toolbar-primary{display:flex;align-items:center;gap:10px}.lesson-toolbar-actions{display:flex;align-items:center;gap:6px;padding-left:10px;border-left:1px solid #dde3df}.lesson-toolbar-actions button{height:35px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:8px;background:transparent;color:#68746c;cursor:pointer;transition:border-color .16s ease,background-color .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease}.lesson-toolbar-actions button:hover:not(:disabled){transform:translateY(-1px)}.lesson-toolbar-actions button:active:not(:disabled){transform:translateY(0)}.lesson-toolbar-actions button:disabled{opacity:.38;cursor:not-allowed}.reset-lesson-button{width:35px}.reset-lesson-button:hover:not(:disabled){border-color:#e3b4aa;background:#fff1ee;color:#b64e3e;box-shadow:0 2px 8px #74302614}.favorite-lesson-button{min-width:47px;padding:0 9px;gap:5px}.favorite-lesson-button:hover:not(:disabled),.favorite-lesson-button.active{border-color:#e4bc58;background:#fff8dc;color:#a36c00}.favorite-lesson-button.active{box-shadow:0 2px 8px #9b6b1517}.favorite-lesson-button span{font:750 11px "Manrope"}.lesson-toolbar-error{margin:10px 0 0;color:#b54c3e;font-size:11px}.lesson-star-count{display:inline-flex;align-items:center;gap:4px}.lesson-star-count svg{color:#d39a17;fill:#fff1b8}.section-lesson-card.completed{border-color:#9fcbb0;background:#f0faf3;box-shadow:inset 3px 0 #4d9a6c}.section-lesson-card.completed:hover{border-color:#69aa82;background:#ebf8ef}.section-lesson-card.completed .section-lesson-number{color:#42845e}.content-card.completed{border-color:#9fcbb0;background:#f0faf3;box-shadow:inset 3px 0 #4d9a6c}.content-card.completed:hover{border-color:#69aa82;background:#ebf8ef}
 @media(max-width:650px){.lesson-toolbar-primary{justify-content:space-between;gap:8px}.lesson-toolbar-actions{margin-left:auto}}
+@media(max-width:650px){
+  .dictation-entry .answer-footer{display:flex;gap:10px}
+  .dictation-entry .answer-footer>div>.shortcut-tooltip{flex:1;min-width:0}
+  .dictation-entry .answer-footer>div>.shortcut-tooltip>button{
+    width:100%;
+    height:40px;
+    min-height:40px;
+    margin:0;
+    padding-block:0
+  }
+}
 .translation-only-import h2{margin:10px 0 0}.translation-only-import fieldset{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(220px,1fr) auto;gap:12px;align-items:end;padding:14px;border:1px solid var(--line);border-radius:10px}.translation-only-import fieldset>button,.translation-only-import>button[type="button"]{display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px}.translation-validation{grid-column:1/-1}.translation-validation.valid{color:#337554}.translation-validation.invalid{color:#b54c3e}.admin-system .translation-only-import fieldset{border-color:var(--admin-border)}
 @media(max-width:650px){.translation-only-import fieldset{grid-template-columns:1fr}.translation-validation{grid-column:1}}
 .media-lesson-template{margin:0 0 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#111}.youtube-segment-player{display:grid;gap:12px}.youtube-player-frame{width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:8px;background:#000}.youtube-player-frame iframe{width:100%;height:100%;border:0}.youtube-controls{margin:0;background:#fff}.admin-system .media-lesson-template{border-color:var(--admin-border);background:var(--admin-surface-2);color:var(--admin-text)}.admin-system .youtube-controls{background:var(--admin-surface);color:var(--admin-text)}
@@ -980,8 +991,8 @@ html[data-theme="dark"] .sentence-comments{border-color:var(--dark-border);backg
   .landing-actions .account-trigger{width:auto;height:34px;padding:0 8px 0 0}
   .landing-actions .account-trigger-name,.landing-actions .account-quick-logout{display:grid}
   .landing-actions .account-trigger-name{display:block}
-  .learning-header .dictation-button{width:auto;height:38px;flex:0 0 auto;padding:0 12px}
-  .learning-header .dictation-button span{display:inline}
+  .learning-header .dictation-button{width:38px;min-width:38px;height:38px;flex:0 0 38px;padding:0;justify-content:center}
+  .learning-header .dictation-button span{display:none}
 
   .practice-header{height:auto;min-height:64px;padding:8px 12px;grid-template-columns:35px minmax(0,1fr);grid-template-areas:"back title" "actions actions";gap:8px}
   .practice-header .back-link{grid-area:back}
