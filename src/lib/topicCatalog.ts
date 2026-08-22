@@ -12,6 +12,16 @@ export interface TopicSummary {
 
 export interface TopicCategory { slug: string; name: string; description: string | null }
 
+/** Static snapshot of the published EN categories, rendered on first paint (before the live /api/listening/categories response lands) so crawlers and users see real content immediately instead of a loading state. Overwritten as soon as the API responds. */
+export const DEFAULT_TOPIC_CATEGORIES: TopicCategory[] = [
+  { slug: "short-stories", name: "Short Stories", description: null },
+  { slug: "long-listening", name: "Long Listening", description: null },
+  { slug: "conversations", name: "Conversations", description: null },
+  { slug: "podcast", name: "Podcast", description: null },
+  { slug: "ted-talks", name: "TED Talks", description: null },
+  { slug: "ielts-listening", name: "IELTS Listening", description: null },
+];
+
 const LEVEL_ORDER = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
 export function buildTopicSummaries(lessons: LessonManifestItem[], language: string, categories: TopicCategory[] = []): TopicSummary[] {
