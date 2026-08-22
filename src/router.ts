@@ -13,7 +13,10 @@ export type AppView =
   | { page: "canonicalLesson"; path: string }
   | { page: "coming"; language: "ja" | "zh" }
   | { page: "library"; language: TargetLanguage }
-  | { page: "lesson"; language: TargetLanguage; lessonId: string };
+  | { page: "lesson"; language: TargetLanguage; lessonId: string }
+  | { page: "about" }
+  | { page: "contact" }
+  | { page: "acknowledgements" };
 
 export function resolveAppView(pathname: string, hash: string): AppView {
   const routePath = pathname === "/" && /^#\//u.test(hash) ? hash.slice(1) : pathname;
@@ -25,6 +28,9 @@ export function resolveAppView(pathname: string, hash: string): AppView {
   if (routePath === "/admin/users") return { page: "adminUsers" };
   if (routePath === "/admin/listening") return { page: "admin" };
   if (routePath === "/admin") return { page: "adminDashboard" };
+  if (routePath === "/about") return { page: "about" };
+  if (routePath === "/contact") return { page: "contact" };
+  if (routePath === "/acknowledgements") return { page: "acknowledgements" };
   if (/^\/(?:learn\/)?en(?:\/.*)?$/u.test(routePath)) return { page: "english" };
   const comingMatch = routePath.match(/^\/(?:learn\/)?(ja|zh)(?:\/.*)?$/u);
   if (comingMatch) return { page: "coming", language: comingMatch[1] as "ja" | "zh" };
@@ -46,6 +52,9 @@ export function viewPath(view: Exclude<AppView, { page: "canonicalLesson" }>) {
     : view.page === "adminComments" ? "/admin/listening/comments"
     : view.page === "adminLeaderboard" ? "/admin/leaderboard"
     : view.page === "adminUsers" ? "/admin/users"
+    : view.page === "about" ? "/about"
+    : view.page === "contact" ? "/contact"
+    : view.page === "acknowledgements" ? "/acknowledgements"
     : view.page === "coming" || view.page === "library" ? `/${view.language}`
     : `/${view.language}/lesson/${view.lessonId}`;
 }

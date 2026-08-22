@@ -1,6 +1,6 @@
 {
-  "name": "Me2Listen",
-  "short_name": "Me2Listen",
+  "name": "Me2listen",
+  "short_name": "Me2listen",
   "icons": [
     {"src": "/me2write-favicon-192.png", "sizes": "192x192", "type": "image/png"},
     {"src": "/me2write-favicon-512.png", "sizes": "512x512", "type": "image/png"}

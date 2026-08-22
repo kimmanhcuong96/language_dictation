@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BarChart3,
   BookOpen,
+  Bug,
   Check,
   ChevronDown,
   CircleHelp,
@@ -18,13 +19,16 @@ import {
   ListMusic,
   LogIn,
   LogOut,
+  Mail,
   Menu,
+  Mic,
   Moon,
   Pause,
   Play,
   RotateCcw,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
   Sun,
   Trophy,
@@ -47,7 +51,8 @@ import { CommentModerationPage } from "./components/admin/CommentModerationPage"
 import { clearProgress, loadProgress, saveProgress } from "./lib/storage";
 import { migrateLegacyHashRoute, navigateToPath, resolveAppView, viewPath, type AppView } from "./router";
 import type { Lesson, Level, ProgressMap, TargetLanguage, UiLocale } from "./types";
-import { AdminListeningPage, EnglishLearningApp, LessonManagementPage } from "./listening";
+import { AdminListeningPage, EnglishLearningApp, LessonManagementPage, Shell, followPathLink } from "./listening";
+import { staticPageT, type StaticIconKey, type StaticPageKey } from "./staticPagesI18n";
 import { useTheme } from "./theme";
 import { adminSystemT } from "./adminSystemI18n";
 import { LeaderboardModal } from "./components/LeaderboardModal";
@@ -118,6 +123,8 @@ function App() {
     <LeaderboardSettingsPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
   ) : view.page === "adminUsers" ? (
     <UserManagementPage locale={locale} onSiteHome={() => navigate({page:"home"})}/>
+  ) : view.page === "about" || view.page === "contact" || view.page === "acknowledgements" ? (
+    <StaticPage page={view.page} locale={locale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "coming" ? (
     <ComingSoonPage language={view.language} locale={locale} onLocale={setLocale} onHome={() => navigate({page:"home"})}/>
   ) : view.page === "lesson" ? (
@@ -137,6 +144,38 @@ function App() {
 }
 
 function ComingSoonPage({language,locale,onLocale,onHome}:{language:"ja"|"zh";locale:UiLocale;onLocale:(locale:UiLocale)=>void;onHome:()=>void}){const meta=targetLanguages.find(item=>item.id===language)!;return <div className="learning-page"><LearningHeader language={language} locale={locale} onLocale={onLocale} onHome={onHome} onDictation={()=>navigateToPath(`/${language}`)}/><div className="content-shell"><main><div className="content-state"><Headphones size={32}/><h2>{getT(locale)("comingSoon")}</h2><p>{meta.nativeName}</p></div></main></div></div>;}
+
+const emailPattern = /^[\w.+-]+@[\w-]+\.[\w.-]+$/;
+const staticPageIcons: Record<StaticIconKey, typeof Headphones> = { headphones: Headphones, gauge: Gauge, mic: Mic, languages: Languages, trophy: Trophy, bookopen: BookOpen, bug: Bug, sparkles: Sparkles, shield: ShieldCheck, users: UserRound, heart: Heart, mail: Mail };
+
+function StaticPage({page,locale,onHome}:{page:StaticPageKey;locale:UiLocale;onHome:()=>void}){
+  const copy=staticPageT(locale,page);
+  const isMailto=copy.cta.href.startsWith("mailto:");
+  return <Shell locale={locale} onHome={onHome} title={copy.title} breadcrumbs={[{label:translate(locale,"home"),onClick:onHome},{label:copy.title}]}>
+    <article className="static-page">
+      <header className="static-hero">
+        <span className="static-hero-eyebrow">{copy.eyebrow}</span>
+        <h1>{copy.title}</h1>
+        <p>{copy.lead}</p>
+      </header>
+      {copy.sections.map(section=>
+        <section key={section.heading} className={`static-section static-section-${section.kind}`}>
+          <div className="static-section-heading">
+            {section.eyebrow&&<span>{section.eyebrow}</span>}
+            <h2>{section.heading}</h2>
+          </div>
+          {section.kind==="prose"&&section.items.map(item=><p key={item.text}>{item.text}</p>)}
+          {section.kind==="cards"&&<div className="static-card-grid">{section.items.map(item=>{const Icon=staticPageIcons[item.icon!];return <div className="static-card" key={item.heading}><span className="static-card-icon"><Icon size={19}/></span><h3>{item.heading}</h3><p>{item.text}</p></div>;})}</div>}
+          {section.kind==="highlight"&&section.items.map(item=>{const Icon=staticPageIcons[item.icon!];return <div className="static-highlight-card" key={item.heading}><span className="static-highlight-icon"><Icon size={22}/></span><div className="static-highlight-body"><h3>{emailPattern.test(item.heading)?<a href={`mailto:${item.heading}`}>{item.heading}</a>:item.heading}</h3><p>{item.text}</p></div></div>;})}
+        </section>
+      )}
+      <div className="static-cta">
+        <div><h2>{copy.cta.heading}</h2><p>{copy.cta.text}</p></div>
+        <a className="primary-button" href={copy.cta.href} onClick={isMailto?undefined:event=>followPathLink(event,copy.cta.href)}>{copy.cta.label}<ArrowRight size={17}/></a>
+      </div>
+    </article>
+  </Shell>;
+}
 
 const getT = (locale: UiLocale) => (key: TranslationKey) => translate(locale, key);
 
@@ -221,7 +260,12 @@ function LanguageHome({ locale, onLocale, onChoose }: { locale: UiLocale; onLoca
     <header className="landing-header"><Logo homeLabel={t("logoHome")} /><div className="landing-actions"><LeaderboardLauncher locale={locale} /><ThemeToggle locale={locale}/><LocaleSelect locale={locale} onLocale={onLocale} /><AccountMenu locale={locale} /></div><MobileHeaderActions locale={locale} onLocale={onLocale}/></header>
     <main className="landing-main">
       <div className="landing-badge"><Headphones size={16} /> {t("landingBadge")}</div>
-      <h1>{t("chooseTitle")}</h1>
+      <h1 className="landing-brand-hero">
+        <span className="landing-brand-mark"><img src="/me2write-favicon.svg" alt="" /></span>
+        <span className="landing-brand-word">Me2<span>listen</span></span>
+        <span className="landing-brand-dash" aria-hidden="true">—</span>
+        <span className="landing-brand-tagline">{t("brandTagline")}</span>
+      </h1>
       <p>{t("chooseSubtitle")}</p>
       <div className="language-grid">
         {targetLanguages.map((language, index) => <button key={language.id} className="language-card" onClick={() => onChoose(language.id)} style={{ "--language-color": language.color, "--delay": `${index * 80}ms` } as CSSProperties}>
@@ -242,7 +286,7 @@ function Logo({homeLabel}:{homeLabel?:string}) {
   return (
     <div className="logo" aria-label={homeLabel}>
       <span className="logo-mark"><img src="/me2write-favicon.svg" alt="" /></span>
-      <span>me2<span>listen</span></span>
+      <span>Me2<span>listen</span></span>
     </div>
   );
 }
@@ -397,7 +441,7 @@ function LibraryPage({ language, locale, onLocale, progress, onHome, onOpenLesso
           }) : <div className="empty-state"><Search size={28} /><h3>{t("noLessons")}</h3><p>{t("retryFilter")}</p></div>}
         </section>
 
-        <footer>© 2026 Me2Listen · {t("footerTagline")}</footer>
+        <footer>© 2026 Me2listen · {t("footerTagline")}</footer>
       </main>
 
       {showSettings && <SettingsModal t={t} onClose={() => setShowSettings(false)} onReset={() => { clearProgress(); location.reload(); }} />}

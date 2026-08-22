@@ -178,7 +178,7 @@ export function serveRobots(request: Request): Response { return new Response(`U
 async function seoHtml(request: Request, env: Env, options: { status?: number; title: string; description: string; canonical?: string; content?: string; language?: string }): Promise<Response> {
   const shellResponse = await env.ASSETS.fetch(new Request(new URL("/", request.url), request));
   let html = await shellResponse.text();
-  html = html.replace(/<title>[^<]*<\/title>/u, `<title>${escapeHtml(options.title)} | Me2Listen</title>`).replace(/<meta name="description" content="[^"]*"\s*\/>/u, `<meta name="description" content="${escapeHtml(options.description)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/u, `<title>${escapeHtml(options.title)} | Me2listen</title>`).replace(/<meta name="description" content="[^"]*"\s*\/>/u, `<meta name="description" content="${escapeHtml(options.description)}" />`);
   if (options.language) html = html.replace(/<html lang="[^"]*">/u, `<html lang="${escapeHtml(options.language)}">`);
   if (options.canonical) html = html.replace("</head>", `<link rel="canonical" href="${escapeHtml(options.canonical)}" /></head>`);
   if (options.content) html = html.replace(/<div id="root"><\/div>/u, `<div id="root">${options.content}</div>`);
