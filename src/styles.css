@@ -186,19 +186,18 @@ h1,h2,h3 { font-family: "Manrope", sans-serif; }
 .admin-filters{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 20px}.admin-filters input,.admin-filters select{min-height:42px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:white}.admin-filters input{min-width:min(280px,100%)}.admin-filters .admin-exact-path{flex:1;min-width:min(360px,100%);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.admin-bulk-actions{display:flex;align-items:center;gap:14px;margin:0 0 12px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:white}.admin-bulk-actions label{display:flex;align-items:center;gap:8px}.admin-bulk-actions span{color:var(--muted)}.admin-bulk-actions button{margin-left:auto}.admin-lesson-list{display:grid;gap:10px}.admin-lesson-list article{display:grid;grid-template-columns:auto minmax(240px,1fr) auto;align-items:center;gap:12px;padding:14px;border:1px solid var(--line);border-radius:10px;background:white}.admin-lesson-select{align-self:start;padding-top:8px}.admin-lesson-copy{min-width:0;display:grid;gap:5px}.admin-lesson-title-row{display:flex;gap:8px}.admin-lesson-title-row input{min-width:0;flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:white}.admin-lesson-copy code{color:var(--muted);overflow-wrap:anywhere;white-space:normal}.admin-lesson-list small{color:var(--muted);overflow-wrap:anywhere}.admin-lesson-actions{display:flex;align-items:center;gap:9px}.admin-lesson-list a{color:#2f6aa3}
 .admin-lesson-tree{display:grid;gap:14px}
 .admin-lesson-language-group{border:1px solid var(--line);border-radius:12px;background:white}
-.admin-lesson-language-group>summary{padding:14px 16px;font-size:15px}
+.admin-lesson-language-group>.admin-lesson-group-summary{padding:14px 16px;font-size:15px}
 .admin-lesson-language-group>div{padding:0 14px 14px;display:grid;gap:12px}
 .admin-lesson-category-group{border:1px solid var(--line);border-radius:10px;background:var(--paper)}
-.admin-lesson-category-group>summary{padding:11px 14px}
+.admin-lesson-category-group>.admin-lesson-group-summary{padding:11px 14px}
 .admin-lesson-category-group>div{padding:0 12px 12px;display:grid;gap:10px}
 .admin-lesson-section-group{border:1px solid var(--line);border-radius:9px}
-.admin-lesson-section-group>summary{padding:9px 12px;font-weight:700}
+.admin-lesson-section-group>.admin-lesson-group-summary{padding:9px 12px;font-weight:700}
 .admin-lesson-section-group .admin-lesson-list{padding:10px}
-.admin-lesson-language-group>summary,.admin-lesson-category-group>summary,.admin-lesson-section-group>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;font-weight:800;list-style:none}
-.admin-lesson-language-group>summary::-webkit-details-marker,.admin-lesson-category-group>summary::-webkit-details-marker,.admin-lesson-section-group>summary::-webkit-details-marker{display:none}
+.admin-lesson-group-summary{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;font-weight:800}
 .admin-lesson-group-label{display:flex;align-items:center;gap:8px;min-width:0}
 .admin-lesson-group-label svg{flex:0 0 auto;color:var(--muted);transition:transform .15s ease}
-details:not([open])>summary .admin-lesson-group-label svg{transform:rotate(-90deg)}
+.admin-lesson-group-summary[aria-expanded="false"] .admin-lesson-group-label svg{transform:rotate(-90deg)}
 .admin-lesson-count{color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}
 @media(max-width:780px){.content-grid{grid-template-columns:1fr}.dictation-shell>header{grid-template-columns:auto 1fr auto}.dictation-main .segment-player{margin-top:30px}.segment-player{flex-wrap:wrap}.segment-player input[type="range"]{order:3;flex-basis:100%}.admin-lesson-list article{grid-template-columns:auto 1fr}.admin-lesson-actions{grid-column:2;flex-wrap:wrap}.admin-bulk-actions{flex-wrap:wrap}.admin-bulk-actions button{margin-left:0}}
 .skip-button{display:flex;align-items:center;gap:6px;padding:8px 11px;border:1px solid var(--line);border-radius:7px;background:white;color:#77776f;cursor:pointer}.skip-button:hover{color:var(--coral);border-color:#efb4a9;background:#fff8f6}
